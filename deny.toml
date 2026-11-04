@@ -106,6 +106,10 @@ allow-build-scripts = [
     "proc-macro2",
     "quote",
     "rayon-core",
+    # redb (base locale, décision T3) : déclare des options cfg (`fuzzing`, `redb_no_std`) et,
+    # uniquement sous `cfg(fuzzing)` sur macOS, des options d'édition de liens ; aucun code
+    # natif compilé (relu le 2026-11-04, redb 4.4.0).
+    "redb",
     "serde",
     "serde_core",
     "serde_json",
@@ -123,6 +127,12 @@ include-archives = true
 [[bans.build.bypass]]
 crate = "zerocopy"
 allow-globs = ["ci/*.sh", "cargo.sh"]
+
+# redb embarque le script de son bac à sable de développement (podman, invoqué par son
+# justfile), jamais exécuté au build. Son build.rs ne fait que déclarer des options cfg.
+[[bans.build.bypass]]
+crate = "redb"
+allow-globs = ["scripts/podman-sandbox.sh"]
 
 [sources]
 unknown-registry = "deny"
