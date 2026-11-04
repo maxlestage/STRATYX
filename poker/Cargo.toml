@@ -1,0 +1,21 @@
+[package]
+name = "stratyx-poker"
+description = "Moteur de calcul poker commun : cartes, évaluation, ranges, équité, pots, règles du No-Limit Hold'em, ICM."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+stratyx-shared.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+rayon.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

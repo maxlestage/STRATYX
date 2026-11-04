@@ -1,0 +1,12 @@
+[package]
+name = "stratyx-server"
+description = "Serveur et API (Tokio + Axum) : synchronisation, comptes et services professionnels."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

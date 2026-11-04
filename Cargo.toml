@@ -1,0 +1,56 @@
+[workspace]
+resolver = "3"
+members = [
+    "shared",
+    "poker",
+    "capture",
+    "video",
+    "vision",
+    "strategy",
+    "analytics",
+    "coaching",
+    "database",
+    "security",
+    "ai/training",
+    "ai/inference",
+    "ai/expresso_3max",
+    "ai/tournament_6max",
+    "apps/desktop",
+    "apps/server",
+    "apps/mobile",
+    "tools/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+repository = "https://github.com/maxlestage/stratyx"
+
+[workspace.dependencies]
+# Crates internes
+stratyx-shared = { path = "shared" }
+stratyx-poker = { path = "poker" }
+
+# Dépendances externes — toutes en Rust pur, auditées via `cargo deny check`.
+rand = { version = "0.9", default-features = false, features = ["std", "std_rng", "os_rng"] }
+rand_chacha = { version = "0.9", default-features = false, features = ["std"] }
+rayon = "1.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[profile.test]
+opt-level = 2

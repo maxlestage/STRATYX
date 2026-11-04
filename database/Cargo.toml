@@ -1,0 +1,12 @@
+[package]
+name = "stratyx-database"
+description = "Persistance des quatre bases logiques : Expresso, Tournois, Stratégie, Utilisateurs."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "stratyx-analytics"
+description = "Analyse des mains (EV, équité, erreurs), profils adversaires et statistiques personnelles."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

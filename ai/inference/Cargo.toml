@@ -1,0 +1,12 @@
+[package]
+name = "stratyx-ai-inference"
+description = "Exécution des modèles sur CPU ou GPU selon le matériel (décision D3)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

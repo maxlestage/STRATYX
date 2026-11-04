@@ -1,0 +1,12 @@
+[package]
+name = "stratyx-security"
+description = "Chiffrement, authentification, autorisations de capture, suppression et export des données (RGPD)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true
