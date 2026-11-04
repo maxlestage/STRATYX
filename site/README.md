@@ -63,6 +63,33 @@ cargo run --release
 hasard du navigateur en WebAssembly. Variables : `PORT`, `SITE_URL` (URL canoniques et
 sitemap).
 
+## GitHub Pages
+
+`.github/workflows/pages.yml` déploie le site à chaque push sur `master` qui touche `site/`,
+`poker/` ou `shared/` (ou à la main, onglet Actions) : tests, bundle WebAssembly, export
+statique, publication.
+
+**Une seule fois** : Settings → Pages → Source : « GitHub Actions ».
+
+L'export rend chaque page avec le vrai serveur Paquets (sans ouvrir de port) :
+
+```bash
+BASE_PATH=/stratyx SITE_URL=https://maxlestage.github.io/stratyx \
+  cargo run --release -- export dist
+```
+
+`BASE_PATH` préfixe chaque adresse (liens, manifeste, service worker, bundle) ; le workflow le
+prend de GitHub (`/stratyx`, ou vide sur un domaine personnalisé). Pages n'a pas de serveur :
+dans l'export, la liste d'attente et le contact deviennent des liens vers le dépôt. Les démos,
+la 3D et la PWA fonctionnent à l'identique.
+
+## Mobile first
+
+La feuille de style vise d'abord le téléphone ; les écrans plus larges ajoutent des colonnes
+(`min-width` : 641, 961 et 1101 px). Sur mobile, rien ne glisse horizontalement : les
+apparitions sont verticales, `html` et `body` coupent tout débordement. Vérifié de 320 à
+1440 px sur chaque page.
+
 ## Vérifier
 
 ```bash

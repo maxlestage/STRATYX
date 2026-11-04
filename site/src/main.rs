@@ -203,6 +203,74 @@ fn champ_cache() -> Element {
         .attr("aria-hidden", "true")
 }
 
+/// Le site exporté pour GitHub Pages n'a pas de serveur : ses formulaires deviennent des
+/// liens vers le dépôt.
+static STATIQUE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn statique() -> bool {
+    STATIQUE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Le formulaire de la liste d'attente (ou, sur le site statique, les liens du dépôt).
+fn formulaire_liste() -> Element {
+    if statique() {
+        return div()
+            .class("static-cta")
+            .child(
+                a().class("btn btn-primary magnetic")
+                    .href(DEPOT)
+                    .attr("rel", "noopener noreferrer")
+                    .child(span().class("ico").html(icone("github")))
+                    .text("Suivre le projet sur GitHub"),
+            )
+            .child(
+                a().class("btn btn-ghost magnetic")
+                    .href(format!("{DEPOT}/issues/new"))
+                    .attr("rel", "noopener noreferrer")
+                    .text("Demander un accès"),
+            );
+    }
+    form()
+        .class("newsletter-form")
+        .attr("method", "post")
+        .attr("action", "/liste-attente")
+        .child(
+            label()
+                .class("sr-only")
+                .attr("for", "la-email")
+                .text("Adresse e-mail"),
+        )
+        .child(
+            input()
+                .id("la-email")
+                .attr("type", "email")
+                .attr("name", "email")
+                .attr("autocomplete", "email")
+                .attr("placeholder", "vous@exemple.fr")
+                .attr("required", ""),
+        )
+        .child(
+            label()
+                .class("sr-only")
+                .attr("for", "la-profil")
+                .text("Votre profil"),
+        )
+        .child(
+            select()
+                .id("la-profil")
+                .attr("name", "profil")
+                .children(PROFILS.map(|p| option().attr("value", p).text(p))),
+        )
+        .child(champ_cache())
+        .child(
+            button()
+                .class("btn btn-primary magnetic")
+                .attr("type", "submit")
+                .text("Je m'inscris")
+                .child(span().class("arrow").html(icone("fleche"))),
+        )
+}
+
 fn pied_de_page() -> Element {
     let colonne = |titre: &'static str, liens: &'static [(&'static str, &'static str)]| {
         div().class("footer-col").child(h4().text(titre)).child(
@@ -230,37 +298,7 @@ fn pied_de_page() -> Element {
                         .child(p().class("muted").text(
                             "Un e-mail à l'ouverture de chaque étape, et une invitation à l'accès anticipé. Rien d'autre.",
                         ))
-                        .child(
-                            form()
-                                .class("newsletter-form")
-                                .attr("method", "post")
-                                .attr("action", "/liste-attente")
-                                .child(label().class("sr-only").attr("for", "la-email").text("Adresse e-mail"))
-                                .child(
-                                    input()
-                                        .id("la-email")
-                                        .attr("type", "email")
-                                        .attr("name", "email")
-                                        .attr("autocomplete", "email")
-                                        .attr("placeholder", "vous@exemple.fr")
-                                        .attr("required", ""),
-                                )
-                                .child(label().class("sr-only").attr("for", "la-profil").text("Votre profil"))
-                                .child(
-                                    select()
-                                        .id("la-profil")
-                                        .attr("name", "profil")
-                                        .children(PROFILS.map(|p| option().attr("value", p).text(p))),
-                                )
-                                .child(champ_cache())
-                                .child(
-                                    button()
-                                        .class("btn btn-primary magnetic")
-                                        .attr("type", "submit")
-                                        .text("Je m'inscris")
-                                        .child(span().class("arrow").html(icone("fleche"))),
-                                ),
-                        )
+                        .child(formulaire_liste())
                         .child(p().class("fine").text(
                             "Désinscription en un clic. Voir la politique de confidentialité.",
                         )),
@@ -1245,7 +1283,18 @@ async fn contact(req: Request) -> Page {
                 .child(
                     div()
                         .class("container contact-grid")
-                        .child(formulaire)
+                        .child(if statique() {
+                            div()
+                                .class("contact-form card")
+                                .attr("data-reveal", "up")
+                                .child(h3().text("Écrivez-nous sur GitHub"))
+                                .child(p().class("muted").text(
+                                    "Cette version du site est statique : ouvrez un ticket sur le dépôt, nous y répondons.",
+                                ))
+                                .child(formulaire_liste())
+                        } else {
+                            formulaire
+                        })
                         .child(infos),
                 )
                 .into(),
@@ -1561,7 +1610,143 @@ fn app() -> App {
 }
 
 fn main() -> std::io::Result<()> {
-    app().run()
+    let mut args = std::env::args().skip(1);
+    match args.next().as_deref() {
+        Some("export") => {
+            let dossier = args.next().unwrap_or_else(|| "dist".into());
+            let base = std::env::var("BASE_PATH").unwrap_or_default();
+            let fichiers = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()?
+                .block_on(export::exporter(std::path::Path::new(&dossier), &base))?;
+            println!("♠ {fichiers} fichiers écrits dans {dossier}");
+            Ok(())
+        }
+        Some(autre) => {
+            eprintln!("commande inconnue {autre:?} : lancez sans argument, ou `export <dossier>`");
+            std::process::exit(2);
+        }
+        None => app().run(),
+    }
+}
+
+/// L'export statique, pour GitHub Pages.
+mod export {
+    use std::path::Path;
+
+    /// Rend chaque page avec le vrai serveur (sans ouvrir de port) et l'écrit dans
+    /// `dossier`, avec `public/`, `pkg/`, le manifeste, le service worker, le plan du site
+    /// et la page 404. Chaque adresse du site est préfixée par `base` (`/stratyx`).
+    pub async fn exporter(dossier: &Path, base: &str) -> std::io::Result<usize> {
+        super::STATIQUE.store(true, std::sync::atomic::Ordering::Relaxed);
+        let base = base.trim_end_matches('/');
+        if dossier.exists() {
+            std::fs::remove_dir_all(dossier)?;
+        }
+        std::fs::create_dir_all(dossier)?;
+        let client = super::app().test().await;
+        let mut n = 0;
+        let mut ecrire = |chemin: &Path, contenu: String| -> std::io::Result<()> {
+            if let Some(parent) = chemin.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(chemin, prefixer(&contenu, base))?;
+            n += 1;
+            Ok(())
+        };
+        for (chemin, _) in super::PAGES {
+            let res = client.get(chemin).await;
+            if res.status() != 200 {
+                return Err(std::io::Error::other(format!(
+                    "{chemin} : {}",
+                    res.status()
+                )));
+            }
+            let fichier = match chemin.trim_matches('/') {
+                "" => dossier.join("index.html"),
+                c => dossier.join(c).join("index.html"),
+            };
+            ecrire(&fichier, res.text())?;
+        }
+        ecrire(
+            &dossier.join("404.html"),
+            client.get("/page-introuvable").await.text(),
+        )?;
+        for f in ["manifest.webmanifest", "sw.js"] {
+            ecrire(&dossier.join(f), client.get(&format!("/{f}")).await.text())?;
+        }
+        // Le plan du site et robots.txt portent déjà l'adresse complète (SITE_URL).
+        for f in ["sitemap.xml", "robots.txt"] {
+            std::fs::write(dossier.join(f), client.get(&format!("/{f}")).await.text())?;
+            n += 1;
+        }
+        n += copier(Path::new("public"), dossier)?;
+        if Path::new("pkg").is_dir() {
+            n += copier(Path::new("pkg"), &dossier.join("pkg"))?;
+        } else {
+            eprintln!("⚠️  pas de pkg/ : le site sera exporté sans WebAssembly (voir README)");
+        }
+        Ok(n)
+    }
+
+    /// Préfixe par `base` chaque adresse absolue du site : `"/ia"` devient `"/stratyx/ia"`
+    /// (dans les attributs, le JSON et le JavaScript), sans toucher à `//hôte` ni aux URL
+    /// complètes.
+    pub fn prefixer(texte: &str, base: &str) -> String {
+        if base.is_empty() {
+            return texte.to_owned();
+        }
+        let mut out = String::with_capacity(texte.len() + 512);
+        let mut precedent = '\0';
+        let mut chars = texte.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '/' && matches!(precedent, '"' | '\'' | '(') && chars.peek() != Some(&'/') {
+                out.push_str(base);
+            }
+            out.push(c);
+            precedent = c;
+        }
+        out
+    }
+
+    fn copier(source: &Path, cible: &Path) -> std::io::Result<usize> {
+        std::fs::create_dir_all(cible)?;
+        let mut n = 0;
+        for entree in std::fs::read_dir(source)? {
+            let entree = entree?;
+            let chemin = entree.path();
+            if chemin.is_dir() {
+                n += copier(&chemin, &cible.join(entree.file_name()))?;
+            } else {
+                std::fs::copy(&chemin, cible.join(entree.file_name()))?;
+                n += 1;
+            }
+        }
+        Ok(n)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::prefixer;
+
+        #[test]
+        fn prefixe_les_adresses_du_site() {
+            assert_eq!(
+                prefixer(r#"<a href="/ia">"#, "/stratyx"),
+                r#"<a href="/stratyx/ia">"#
+            );
+            assert_eq!(
+                prefixer(r#"register("/sw.js")"#, "/stratyx"),
+                r#"register("/stratyx/sw.js")"#
+            );
+            assert_eq!(
+                prefixer(r#"<a href="https://x.fr/a">"#, "/stratyx"),
+                r#"<a href="https://x.fr/a">"#
+            );
+            assert_eq!(prefixer(r#"src="//cdn/x""#, "/stratyx"), r#"src="//cdn/x""#);
+            assert_eq!(prefixer(r#"href="/""#, ""), r#"href="/""#);
+        }
+    }
 }
 
 #[cfg(test)]
