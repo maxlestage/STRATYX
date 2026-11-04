@@ -3,10 +3,26 @@ name = "stratyx-security"
 description = "Chiffrement, authentification, autorisations de capture, suppression et export des données (RGPD)."
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
+# Les correctifs RustCrypto récents (ctutils >= 0.4.4, avis RustSec) exigent Rust 1.87.
+rust-version = "1.87"
 publish.workspace = true
 
 [dependencies]
+stratyx-poker.workspace = true
+aead-stream = { version = "0.6", default-features = false, features = ["alloc"] }
+argon2 = { version = "0.6", default-features = false, features = ["alloc", "password-hash", "zeroize"] }
+base64ct = { version = "1.8", features = ["alloc"] }
+chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
+# Dépendance indirecte (digest, poly1305, phc) : plancher imposé pour garder le correctif
+# RustSec de ctutils 0.4.4 même si `cargo update` applique le résolveur MSRV du workspace.
+ctutils = { version = "0.4.4", default-features = false }
+getrandom = "0.3"
+serde.workspace = true
+serde_json.workspace = true
+sha2 = { version = "0.11", default-features = false }
+subtle = { version = "2.6", default-features = false }
+thiserror.workspace = true
+zeroize = { version = "1.8", default-features = false, features = ["alloc"] }
 
 [lints]
 workspace = true
