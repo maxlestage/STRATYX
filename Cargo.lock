@@ -277,6 +277,10 @@ name = "stratyx-strategy"
 version = "0.1.0"
 
 [[package]]
+name = "stratyx-transcription"
+version = "0.1.0"
+
+[[package]]
 name = "stratyx-video"
 version = "0.1.0"
 
