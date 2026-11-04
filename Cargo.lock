@@ -452,6 +452,15 @@ version = "0.1.0"
 [[package]]
 name = "stratyx-analytics"
 version = "0.1.0"
+dependencies = [
+ "rand",
+ "rand_chacha",
+ "serde",
+ "serde_json",
+ "stratyx-poker",
+ "stratyx-shared",
+ "thiserror",
+]
 
 [[package]]
 name = "stratyx-capture"
