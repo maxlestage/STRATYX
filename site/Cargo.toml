@@ -24,6 +24,8 @@ stratyx-shared = { path = "../shared" }
 # Serveur : Paquets sans SQLite ni PostgreSQL (aucune bibliothèque C) ; base en mémoire.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 paquets = { git = "https://github.com/maxlestage/Paquets", default-features = false }
+# Pour l'export statique (déjà utilisé par Paquets).
+tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 paquets = { git = "https://github.com/maxlestage/Paquets", default-features = false, features = ["client"] }

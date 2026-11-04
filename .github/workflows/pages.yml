@@ -1,0 +1,90 @@
+# Le site web (site/) sur GitHub Pages : WebAssembly, export statique, déploiement.
+#
+# Une seule fois, dans le dépôt : Settings → Pages → Source : « GitHub Actions ».
+name: Site (GitHub Pages)
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "site/**"
+      - "poker/**"
+      - "shared/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un déploiement à la fois ; celui en cours va au bout.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  WASM_BINDGEN: "0.2.129" # la version de wasm-bindgen dans site/Cargo.toml
+
+jobs:
+  build:
+    name: Construire le site
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cible WebAssembly (toolchain de rust-toolchain.toml)
+        run: rustup target add wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: site
+          cache-bin: true
+
+      - name: wasm-bindgen ${{ env.WASM_BINDGEN }}
+        run: |
+          if ! wasm-bindgen --version 2>/dev/null | grep -q "$WASM_BINDGEN"; then
+            cargo install wasm-bindgen-cli --version "$WASM_BINDGEN" --locked
+          fi
+
+      - name: Tests du site
+        run: cargo test --locked
+
+      - name: Bundle WebAssembly (îlots, 3D, moteur poker)
+        run: |
+          cargo build --locked --lib --target wasm32-unknown-unknown --profile wasm-release
+          wasm-bindgen --target web --no-typescript --out-dir pkg \
+            target/wasm32-unknown-unknown/wasm-release/stratyx_site.wasm
+
+      - id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Export statique
+        run: cargo run --locked --release -- export dist
+        env:
+          # « /stratyx » pour https://<compte>.github.io/stratyx/, vide sur un domaine personnalisé.
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          SITE_URL: ${{ steps.pages.outputs.base_url }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  deploy:
+    name: Déployer
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
