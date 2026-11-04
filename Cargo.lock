@@ -275,6 +275,16 @@ dependencies = [
 [[package]]
 name = "stratyx-strategy"
 version = "0.1.0"
+dependencies = [
+ "rand",
+ "rand_chacha",
+ "rayon",
+ "serde",
+ "serde_json",
+ "stratyx-poker",
+ "stratyx-shared",
+ "thiserror",
+]
 
 [[package]]
 name = "stratyx-video"
