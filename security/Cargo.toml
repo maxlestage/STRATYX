@@ -4,7 +4,7 @@ description = "Chiffrement, authentification, autorisations de capture, suppress
 version.workspace = true
 edition.workspace = true
 # Les correctifs RustCrypto récents (ctutils >= 0.4.4, avis RustSec) exigent Rust 1.87.
-rust-version = "1.87"
+rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]

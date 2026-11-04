@@ -1,12 +1,22 @@
 [package]
 name = "stratyx-database"
-description = "Persistance des quatre bases logiques : Expresso, Tournois, Stratégie, Utilisateurs."
+description = "Persistance locale (redb) des bases Expresso, Tournois, Hold'em, Stratégie et Utilisateurs ; import et export des historiques texte."
 version.workspace = true
 edition.workspace = true
+# redb 4 exige Rust 1.90 (la chaîne d'outils du projet suit la version stable).
 rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+stratyx-shared.workspace = true
+stratyx-poker.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# Base embarquée transactionnelle en Rust pur (décision T3).
+redb = { version = "4.4", default-features = false, features = ["std"] }
+# SHA-256 en Rust pur (RustCrypto), sans assembleur ni identifiants OID.
+sha2 = { version = "0.11", default-features = false }
 
 [lints]
 workspace = true

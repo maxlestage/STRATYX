@@ -1,0 +1,81 @@
+PokerStars Hand #254372383936:  Hold'em No Limit ($0.05/$0.10 USD) - 2024/12/01 21:15:03 CET [2024/12/01 15:15:03 ET]
+Table 'Aase III' 6-max Seat #4 is the button
+Seat 1: Lucky_Lu ($10.37 in chips)
+Seat 2: Nordic Fox ($9.85 in chips)
+Seat 3: HeroStx ($10 in chips)
+Seat 4: Cbet4Life ($12.40 in chips)
+Seat 5: maxi_m ($4.12 in chips)
+Seat 6: PaulTheOctopus ($10.95 in chips)
+maxi_m: posts small blind $0.05
+PaulTheOctopus: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to HeroStx [Ah Kd]
+Lucky_Lu: folds
+Nordic Fox: raises $0.20 to $0.30
+HeroStx: raises $0.70 to $1
+Cbet4Life: folds
+maxi_m: folds
+PaulTheOctopus: folds
+Nordic Fox: calls $0.70
+*** FLOP *** [Kh 7c 2d]
+Nordic Fox: checks
+HeroStx: bets $1.10
+Nordic Fox: folds
+Uncalled bet ($1.10) returned to HeroStx
+HeroStx collected $2.05 from pot
+HeroStx: doesn't show hand
+*** SUMMARY ***
+Total pot $2.15 | Rake $0.10
+Board [Kh 7c 2d]
+Seat 1: Lucky_Lu folded before Flop (didn't bet)
+Seat 2: Nordic Fox folded on the Flop
+Seat 3: HeroStx collected ($2.05)
+Seat 4: Cbet4Life (button) folded before Flop (didn't bet)
+Seat 5: maxi_m (small blind) folded before Flop
+Seat 6: PaulTheOctopus (big blind) folded before Flop
+
+
+
+PokerStars Hand #254372401127:  Hold'em No Limit ($0.05/$0.10 USD) - 2024/12/01 21:16:40 CET [2024/12/01 15:16:40 ET]
+Table 'Aase III' 6-max Seat #5 is the button
+Seat 1: Lucky_Lu ($10.37 in chips)
+Seat 2: Nordic Fox ($8.85 in chips)
+Seat 3: HeroStx ($11.05 in chips)
+Seat 4: Cbet4Life ($12.40 in chips)
+Seat 5: maxi_m ($4.07 in chips)
+Seat 6: PaulTheOctopus ($10.85 in chips)
+PaulTheOctopus: posts small blind $0.05
+Lucky_Lu: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to HeroStx [Qs Qc]
+Nordic Fox: folds
+HeroStx: raises $0.20 to $0.30
+Cbet4Life: folds
+maxi_m: calls $0.30
+PaulTheOctopus: folds
+Lucky_Lu: calls $0.20
+*** FLOP *** [Jd 8s 3c]
+Lucky_Lu: checks
+HeroStx: bets $0.60
+maxi_m: calls $0.60
+Lucky_Lu: folds
+*** TURN *** [Jd 8s 3c] [2h]
+HeroStx: bets $1.50
+maxi_m: calls $1.50
+*** RIVER *** [Jd 8s 3c 2h] [Ks]
+HeroStx: checks
+maxi_m: bets $1.67 and is all-in
+HeroStx: calls $1.67
+*** SHOW DOWN ***
+maxi_m: shows [Kd Jc] (two pair, Kings and Jacks)
+HeroStx: mucks hand
+maxi_m collected $8.07 from pot
+*** SUMMARY ***
+Total pot $8.49 | Rake $0.42
+Board [Jd 8s 3c 2h Ks]
+Seat 1: Lucky_Lu (big blind) folded on the Flop
+Seat 2: Nordic Fox folded before Flop (didn't bet)
+Seat 3: HeroStx mucked [Qs Qc]
+Seat 4: Cbet4Life folded before Flop (didn't bet)
+Seat 5: maxi_m (button) showed [Kd Jc] and won ($8.07) with two pair, Kings and Jacks
+Seat 6: PaulTheOctopus (small blind) folded before Flop
