@@ -1,0 +1,51 @@
+PokerStars Hand #254391177302:  Hold'em Limit ($0.10/$0.20 USD) - 2024/12/02 10:05:44 CET [2024/12/02 04:05:44 ET]
+Table 'Ceres IV' 9-max Seat #1 is the button
+Seat 1: LimitLarry ($4.80 in chips)
+Seat 2: Sb_Sally ($6.10 in chips)
+Seat 3: HeroStx ($5 in chips)
+Seat 4: Fixed_Fred ($3.35 in chips)
+Seat 6: OldSchool99 ($7.20 in chips)
+Seat 7: Turbo_Tina ($2.15 in chips)
+Seat 9: Capped_Carl ($5.55 in chips)
+Sb_Sally: posts small blind $0.05
+HeroStx: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to HeroStx [Ad Qd]
+Fixed_Fred: raises $0.10 to $0.20
+OldSchool99: calls $0.20
+Turbo_Tina: folds
+Capped_Carl: folds
+LimitLarry: folds
+Sb_Sally: folds
+HeroStx: raises $0.10 to $0.30
+Fixed_Fred: raises $0.10 to $0.40
+OldSchool99: calls $0.20
+HeroStx: calls $0.10
+*** FLOP *** [Qc 8d 3d]
+HeroStx: bets $0.10
+Fixed_Fred: raises $0.10 to $0.20
+OldSchool99: folds
+HeroStx: raises $0.10 to $0.30
+Fixed_Fred: calls $0.10
+*** TURN *** [Qc 8d 3d] [5s]
+HeroStx: bets $0.20
+Fixed_Fred: calls $0.20
+*** RIVER *** [Qc 8d 3d 5s] [Kd]
+HeroStx: bets $0.20
+Fixed_Fred: raises $0.20 to $0.40
+HeroStx: raises $0.20 to $0.60
+Fixed_Fred: calls $0.20
+*** SHOW DOWN ***
+HeroStx: shows [Ad Qd] (a flush, Ace high)
+Fixed_Fred: mucks hand
+HeroStx collected $3.30 from pot
+*** SUMMARY ***
+Total pot $3.45 | Rake $0.15
+Board [Qc 8d 3d 5s Kd]
+Seat 1: LimitLarry (button) folded before Flop (didn't bet)
+Seat 2: Sb_Sally (small blind) folded before Flop
+Seat 3: HeroStx (big blind) showed [Ad Qd] and won ($3.30) with a flush, Ace high
+Seat 4: Fixed_Fred mucked
+Seat 6: OldSchool99 folded on the Flop
+Seat 7: Turbo_Tina folded before Flop (didn't bet)
+Seat 9: Capped_Carl folded before Flop (didn't bet)
