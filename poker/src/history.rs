@@ -12,28 +12,9 @@ use thiserror::Error;
 
 use crate::card::Card;
 use crate::cardset::CardSet;
+use crate::format::{FormatError, GameFormat};
 use crate::game::{Action, Blinds, GameError, HandSetup, HandState, Phase, Reveal, Settlement};
 use crate::range::HoleCards;
-
-/// Format de jeu, qui détermine l'IA compétente et la base d'archives.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum GameFormat {
-    /// Expresso / Spin : tournois rapides à 3 joueurs.
-    Expresso3Max,
-    /// Tournois à 6 joueurs par table.
-    Tournament6Max,
-}
-
-impl GameFormat {
-    #[must_use]
-    pub const fn max_players(self) -> usize {
-        match self {
-            GameFormat::Expresso3Max => 3,
-            GameFormat::Tournament6Max => 6,
-        }
-    }
-}
 
 /// Un joueur servi.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -71,6 +52,8 @@ pub struct HandRecord {
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RecordError {
+    #[error("format invalide : {0}")]
+    Format(FormatError),
     #[error("{count} joueurs servis pour un format à {max} places")]
     TooManyPlayers { count: usize, max: usize },
     #[error("siège {0} en double")]
@@ -120,6 +103,7 @@ pub struct Replay {
 impl HandRecord {
     /// Rejoue l'historique dans le moteur de règles et calcule le résultat.
     pub fn replay(&self) -> Result<Replay, RecordError> {
+        self.format.validate().map_err(RecordError::Format)?;
         let max = self.format.max_players();
         if self.seats.len() > max {
             return Err(RecordError::TooManyPlayers {
@@ -137,11 +121,12 @@ impl HandRecord {
             .iter()
             .position(|s| *s == self.button_seat)
             .ok_or(RecordError::ButtonNotSeated(self.button_seat))?;
-        let setup = HandSetup {
-            stacks: order.iter().map(|s| s.stack.value).collect(),
+        let setup = HandSetup::new(
+            order.iter().map(|s| s.stack.value).collect(),
             button,
-            blinds: self.blinds.value,
-        };
+            self.blinds.value,
+        )
+        .with_structure(self.format.structure);
         let mut state = HandState::new(&setup).map_err(RecordError::Setup)?;
 
         let mut reveals: Vec<Reveal> = order
@@ -294,7 +279,7 @@ mod tests {
     fn expresso_hand() -> HandRecord {
         HandRecord {
             id: "exp-0001".into(),
-            format: GameFormat::Expresso3Max,
+            format: GameFormat::EXPRESSO,
             blinds: ok(Blinds::new(10, 20)),
             button_seat: 1,
             seats: vec![
@@ -368,6 +353,53 @@ mod tests {
         let mut h = expresso_hand();
         h.button_seat = 9;
         assert_eq!(h.replay().unwrap_err(), RecordError::ButtonNotSeated(9));
+    }
+
+    #[test]
+    fn full_ring_fixed_limit_cash_game() {
+        use crate::format::GameType;
+        use crate::game::BettingStructure;
+        let format =
+            GameFormat::new(GameType::CashGame, 9, BettingStructure::FIXED_LIMIT_CASH).unwrap();
+        let mut seats: Vec<SeatRecord> = (1..=9)
+            .map(|i| seat(i, &format!("J{i}"), 200, None))
+            .collect();
+        seats[3].hole_cards = Some(ok("AhAd".parse().unwrap()));
+        // Bouton siège 1 : SB 2, BB 3, UTG 4 (héros).
+        let mut events = vec![act(4, Action::Raise(Chips(8)))];
+        events.extend((5..=9).chain(1..=2).map(|s| act(s, Action::Fold)));
+        events.push(act(3, Action::Call));
+        events.push(board("Kd7c2s"));
+        events.push(act(3, Action::Check));
+        events.push(act(4, Action::Bet(Chips(4))));
+        events.push(act(3, Action::Fold));
+        let h = HandRecord {
+            id: "cash-fl-9max".into(),
+            format,
+            blinds: ok(Blinds::new(2, 4)),
+            button_seat: 1,
+            seats,
+            events,
+        };
+        let r = h.replay().unwrap();
+        let Outcome::Settled(s) = r.outcome else {
+            panic!("main non résolue")
+        };
+        // Le héros gagne la SB (2) et le call de la BB (8).
+        assert_eq!(s.net[3], 10);
+
+        // Une relance au mauvais montant est refusée en limite fixe.
+        let mut bad = h.clone();
+        bad.events[0] = act(4, Action::Raise(Chips(12)));
+        assert!(matches!(
+            bad.replay(),
+            Err(RecordError::Rule { index: 0, .. })
+        ));
+
+        // Format incohérent.
+        let mut bad = h;
+        bad.format.table_size = 12;
+        assert!(matches!(bad.replay(), Err(RecordError::Format(_))));
     }
 
     #[test]

@@ -3,7 +3,8 @@
 Chaque décision est numérotée, datée et justifiée. Une décision ne se modifie pas : on en
 ajoute une nouvelle qui la remplace (« remplace Dx »).
 
-- **D1 à D7** : décisions de cadrage du cahier des charges, **validées le 2026-11-04**.
+- **D1 à D8** : décisions de cadrage du cahier des charges, **validées le 2026-11-04**
+  (D8 remplace D4).
 - **T1 à T9** : décisions techniques qui en découlent. « Acceptée » : déjà appliquée dans
   le code. « Proposée » : à confirmer au début de la phase indiquée.
 
@@ -55,6 +56,8 @@ compilent de C. CUDA est écarté : ses noyaux sont compilés par `nvcc`.
 
 ### D4 — Variantes : Texas Hold'em No-Limit uniquement au lancement
 
+**Remplacée par D8 (2026-11-04).**
+
 **Choix.** Les deux formats visés (Expresso 3-Max et tournois 6-Max) se jouent en NLHE.
 
 **Pourquoi.** Concentrer l'effort sur la qualité : reconnaissance, règles, IA. Les types du moteur
@@ -92,6 +95,33 @@ l'API publique (phase 7).
 
 **Pourquoi.** C'est la vision exprimée. L'architecture en crates (moteur commun, `apps/server`)
 la prépare dès maintenant sans retarder le premier livrable utile.
+
+### D8 — Couverture complète du Texas Hold'em (remplace D4)
+
+**Choix.** La plateforme couvre le Texas Hold'em sous toutes ses formes :
+
+| Dimension | Couverture |
+|---|---|
+| Structures de mise | No-limit, pot-limit, limite fixe |
+| Tailles de table | 2 à 10 joueurs (tête-à-tête, 3-max, 6-max, 8-max, table pleine 9 et 10) |
+| Types de partie | Cash game, tournoi multi-tables, sit & go, Expresso |
+
+Les autres variantes (Omaha, Short Deck, Stud…) restent hors périmètre.
+
+**Rôle des IA.** Les deux IA restent spécialisées : Expresso 3-Max (NL) et Tournois 6-Max
+(NL). Tous les autres formats bénéficient de la capture, de la retranscription, des
+statistiques et de l'analyse par le moteur commun : équité, EV, cotes, ICM en tournoi.
+`GameFormat::specialist()` indique quelle IA est compétente pour une main.
+
+**Règles appliquées.** Pot-limit : relance maximale égale au pot après le call. Limite fixe :
+petite mise au préflop et au flop, grosse mise (double) au turn et à la river ; une mise et
+trois relances au plus par tour. Le plafond est levé en tête-à-tête en cash game, et en tournoi
+seulement quand deux joueurs sont servis. Un tapis d'au moins une demi-mise compte comme une
+mise complète ; en dessous, il ne rouvre pas les enchères et peut être complété (Robert's Rules
+of Poker, règles TDA).
+
+**Hors moteur pour l'instant.** Straddles, blindes mortes et blindes postées à l'arrivée en cash
+game : à ajouter avec l'import des historiques des salles (phase 3).
 
 ---
 

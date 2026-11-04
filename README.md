@@ -1,12 +1,15 @@
 # STRATYX
 
-Plateforme professionnelle d'analyse de poker, **entièrement écrite en Rust** : capture et
+Plateforme professionnelle d'analyse de **Texas Hold'em**, **entièrement écrite en Rust** : capture et
 retranscription automatique des parties, analyse stratégique, profils d'adversaires, coaching,
 avec deux IA spécialisées (**Expresso 3-Max** et **Tournois 6-Max**) adossées à un moteur de
 calcul commun.
 
 - Cahier des charges : [`docs/cahier-des-charges.md`](docs/cahier-des-charges.md)
 - Décisions et audit des dépendances : [`docs/decisions.md`](docs/decisions.md)
+
+Couverture : no-limit, pot-limit et limite fixe ; tables de 2 à 10 joueurs ; cash game,
+tournois, sit & go et Expresso.
 
 > Périmètre : analyse **après** partie et entraînement. Aucune assistance stratégique en direct
 > pendant une partie réelle.
@@ -34,7 +37,7 @@ cargo run --release -p stratyx-cli -- icm --stacks 5000,3000,2000 --payouts 50,3
 | Crate | Rôle | Phase |
 |---|---|---|
 | `shared` | jetons, confiance, provenance des données | 1 ✅ |
-| `poker` | cartes, évaluation, ranges, équité, règles NLHE, pots, historiques, ICM | 1 ✅ |
+| `poker` | moteur Texas Hold'em : cartes, évaluation, ranges, équité, règles NL/PL/FL, formats, pots, historiques, ICM | 1 ✅ |
 | `tools/cli` | outil `stratyx` | 1 ✅ |
 | `capture`, `video`, `vision` | capture d'écran, vidéo, reconnaissance | 2 |
 | `database` | quatre bases : Expresso, Tournois, Stratégie, Utilisateurs | 3 |
