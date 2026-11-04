@@ -1,0 +1,56 @@
+[package]
+name = "stratyx-site"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Le site de STRATYX, écrit entièrement en Rust avec Paquets : pages SEO, PWA, scènes 3D et démos du moteur poker en WebAssembly."
+
+# Crate autonome : hors du workspace STRATYX (son audit `cargo deny` ne couvre que le
+# produit). Le site réutilise le moteur `stratyx-poker`, compilé aussi en WebAssembly.
+[workspace]
+
+[lib]
+name = "stratyx_site"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "stratyx-site"
+path = "src/main.rs"
+
+[dependencies]
+stratyx-poker = { path = "../poker" }
+stratyx-shared = { path = "../shared" }
+
+# Serveur : Paquets sans SQLite ni PostgreSQL (aucune bibliothèque C) ; base en mémoire.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+paquets = { git = "https://github.com/maxlestage/Paquets", default-features = false }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+paquets = { git = "https://github.com/maxlestage/Paquets", default-features = false, features = ["client"] }
+wasm-bindgen = "=0.2.129"
+js-sys = "0.3"
+# Le hasard de `rand` dans le navigateur (voir .cargo/config.toml).
+getrandom = { version = "0.3", features = ["wasm_js"] }
+web-sys = { version = "0.3", features = [
+  "AddEventListenerOptions", "CssStyleDeclaration", "Document", "DomRect", "DomTokenList",
+  "Element", "Event", "EventTarget", "HtmlElement", "IntersectionObserver",
+  "IntersectionObserverEntry", "IntersectionObserverInit", "KeyboardEvent", "MediaQueryList",
+  "MouseEvent", "MutationObserver", "MutationObserverInit", "NodeList", "Performance",
+  "PointerEvent", "ScrollBehavior", "ScrollToOptions", "Window",
+] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
