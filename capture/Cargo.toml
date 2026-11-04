@@ -1,0 +1,12 @@
+[package]
+name = "stratyx-capture"
+description = "Capture d'écran multiplateforme via les API natives des systèmes (exception validée, décision D1)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

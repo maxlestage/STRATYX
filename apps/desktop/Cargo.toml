@@ -1,0 +1,12 @@
+[package]
+name = "stratyx-desktop"
+description = "Application de bureau (Windows, macOS, Linux) : capture, retranscription, analyse et coaching."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

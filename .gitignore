@@ -1,0 +1,8 @@
+/target
+**/*.rs.bk
+.DS_Store
+# Données de jeu et captures : jamais versionnées (RGPD, droit à l'image).
+/data/
+*.mp4
+*.mkv
+*.mov

@@ -1,0 +1,12 @@
+[package]
+name = "stratyx-coaching"
+description = "Exercices, quiz, simulations et parcours de progression personnalisés."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

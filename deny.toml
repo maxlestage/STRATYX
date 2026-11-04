@@ -1,0 +1,130 @@
+# Audit des dépendances Stratyx — `cargo deny check`
+#
+# Applique la décision D1 (« Rust partout, API natives des systèmes autorisées ») :
+# - aucune crate qui compile du C/C++ ni n'embarque de bibliothèque native tierce ;
+# - toute crate dotée d'un script de build doit être explicitement approuvée ;
+# - licences permissives uniquement ; aucune vulnérabilité connue.
+#
+# Toute exception passe par une décision documentée dans docs/decisions.md.
+
+[graph]
+# L'audit couvre toutes les plateformes cibles (décision D2), pas seulement la machine locale.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "aarch64-apple-ios",
+    "aarch64-linux-android",
+]
+all-features = true
+
+[advisories]
+yanked = "deny"
+ignore = []
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.9
+# Licences autorisées par avance pour les dépendances des phases suivantes.
+unused-allowed-license = "allow"
+
+[licenses.private]
+# Les crates internes (publish = false) ne sont pas soumises au contrôle de licence.
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+deny = [
+    # Compilation de code C/C++ ou génération de liaisons vers du C.
+    { crate = "cc", reason = "compile du C/C++ : interdit (D1)" },
+    { crate = "cmake", reason = "compile du C/C++ : interdit (D1)" },
+    { crate = "bindgen", reason = "liaisons C générées : interdit hors exception D1" },
+    # Bibliothèques C/C++ explicitement écartées par le cahier des charges.
+    { crate = "opencv", reason = "OpenCV (C++) écarté : vision en Rust (Burn, image)" },
+    { crate = "opencv-sys", reason = "OpenCV (C++) écarté" },
+    { crate = "ffmpeg-next", reason = "FFmpeg (C) écarté : décodage via API système ou Rust" },
+    { crate = "ffmpeg-sys-next", reason = "FFmpeg (C) écarté" },
+    { crate = "tesseract", reason = "OCR C++ écarté : reconnaissance par modèles Burn" },
+    { crate = "tesseract-sys", reason = "OCR C++ écarté" },
+    { crate = "leptonica-sys", reason = "C : écarté" },
+    # Crypto et TLS : implémentations Rust (RustCrypto) uniquement.
+    { crate = "openssl-sys", reason = "OpenSSL (C) : utiliser RustCrypto" },
+    { crate = "ring", reason = "C/assembleur : utiliser RustCrypto" },
+    { crate = "aws-lc-sys", reason = "C : fournisseur rustls à remplacer par RustCrypto" },
+    { crate = "aws-lc-rs", reason = "C : fournisseur rustls à remplacer par RustCrypto" },
+    # Bases de données embarquées en C.
+    { crate = "libsqlite3-sys", reason = "SQLite (C) : base locale en Rust (redb)" },
+    { crate = "rocksdb", reason = "RocksDB (C++) : écarté" },
+    { crate = "librocksdb-sys", reason = "RocksDB (C++) : écarté" },
+    # IA : moteurs C++/CUDA/Python.
+    { crate = "tch", reason = "libtorch (C++) : IA en Burn" },
+    { crate = "torch-sys", reason = "libtorch (C++)" },
+    { crate = "ort", reason = "ONNX Runtime (C++) : IA en Burn" },
+    { crate = "ort-sys", reason = "ONNX Runtime (C++)" },
+    { crate = "candle-kernels", reason = "noyaux CUDA compilés par nvcc" },
+    { crate = "bindgen_cuda", reason = "compilation CUDA" },
+    { crate = "openblas-src", reason = "BLAS en C/Fortran" },
+    { crate = "intel-mkl-src", reason = "MKL (binaire natif)" },
+    { crate = "pyo3", reason = "Python : interdit" },
+    { crate = "pyo3-ffi", reason = "Python : interdit" },
+    # Interfaces : rendu Skia (C++) exclu.
+    { crate = "skia-bindings", reason = "Skia (C++) : utiliser le rendu femtovg ou logiciel de Slint" },
+    # Compression et allocateurs en C.
+    { crate = "zstd-sys", reason = "C : utiliser ruzstd / lz4_flex / miniz_oxide" },
+    { crate = "libz-sys", reason = "C : utiliser miniz_oxide" },
+    { crate = "bzip2-sys", reason = "C" },
+    { crate = "lzma-sys", reason = "C" },
+    { crate = "tikv-jemalloc-sys", reason = "C" },
+    { crate = "libmimalloc-sys", reason = "C" },
+]
+
+[bans.build]
+# Seules ces crates peuvent exécuter un script de build ; chacune a été relue
+# (aucune ne compile de code natif). Toute nouvelle entrée doit être justifiée.
+allow-build-scripts = [
+    # Détection de la version de rustc / options cfg uniquement (relu le 2026-11-04).
+    "crossbeam-deque",
+    "crossbeam-epoch",
+    "crossbeam-utils",
+    "getrandom",
+    "libc",
+    "proc-macro2",
+    "quote",
+    "rayon-core",
+    "serde",
+    "serde_core",
+    "serde_json",
+    "thiserror",
+    "zerocopy",
+    "zmij",
+]
+executables = "deny"
+interpreted = "deny"
+include-dependencies = true
+include-workspace = true
+include-archives = true
+
+# zerocopy embarque des scripts shell d'intégration continue, jamais exécutés au build.
+[[bans.build.bypass]]
+crate = "zerocopy"
+allow-globs = ["ci/*.sh", "cargo.sh"]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

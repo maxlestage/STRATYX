@@ -1,0 +1,150 @@
+# Cahier des charges — Stratyx
+
+**Version 1.0 — verrouillée le 2026-11-04.** Les décisions de cadrage D1 à D7 sont détaillées dans
+[`decisions.md`](decisions.md).
+
+## 1. Objet
+
+Logiciel professionnel d'analyse de poker. Il capture l'écran ou importe une vidéo, retranscrit
+automatiquement chaque main, l'analyse en profondeur et aide le joueur à progresser grâce à deux IA
+spécialisées.
+
+**Règle fondamentale.** Tout est écrit en Rust : moteurs, IA, interfaces, serveur, outils. Seules
+les API des systèmes d'exploitation et les pilotes sont utilisés depuis Rust (D1). Aucune
+dépendance native tierce en C, C++, Python, Swift ou Kotlin. La règle est contrôlée
+automatiquement par `cargo deny check`.
+
+## 2. Décisions validées
+
+| # | Sujet | Décision |
+|---|---|---|
+| D1 | Politique Rust | Rust partout, API natives des systèmes autorisées |
+| D2 | Plateformes | Ordinateur et mobile, priorité à l'ordinateur (Windows, macOS, Linux, puis iOS, Android) |
+| D3 | Calcul IA | CPU + GPU selon le matériel (Burn : `ndarray` / `wgpu`) |
+| D4 | Variantes | Texas Hold'em No-Limit uniquement au lancement |
+| D5 | Entraînement IA | Archives + simulations |
+| D6 | Utilisation | Analyse après partie et entraînement, en modes distincts |
+| D7 | Ambition | Plateforme complète avec API et services professionnels, livrée par étapes |
+
+## 3. Les deux IA
+
+Elles partagent le moteur de calcul commun (`poker/`). Chacune a ses propres archives,
+entraînements, simulations et évaluations.
+
+**IA Expresso 3-Max** (`ai/expresso_3max`) : push/fold et tapis courts, ranges par position,
+heads-up et jeu à trois, stratégie préflop et postflop, multiplicateurs et structures de paiement.
+
+**IA Tournois 6-Max** (`ai/tournament_6max`) : open, 3-bet et 4-bet, ranges par position,
+postflop, gestion des tapis, ICM, bulle et table finale, adaptation aux adversaires.
+
+## 4. Capture vidéo et vision
+
+- Capture de l'écran pendant la partie, sans aucune aide affichée (D6). Import de vidéos existantes.
+- Reconnaissance des cartes, joueurs, positions, blindes, antes, tapis, mises et actions (fold,
+  check, call, bet, raise, all-in).
+- Pots principaux et secondaires calculés par le moteur.
+- Événements synchronisés avec la vidéo (horodatage en millisecondes).
+- Détections incertaines signalées : confiance sous le seuil, ou transition refusée par les règles.
+- **Aucune carte privée invisible n'est inventée.** Si une carte manque pour désigner un gagnant,
+  le résultat est déclaré « non résolu ».
+
+## 5. Retranscription
+
+Chaque main est reconstruite (préflop, flop, turn, river, abattage, résultat), puis **validée par
+rejeu** dans le moteur de règles. L'utilisateur peut revoir, corriger, valider, rechercher et
+exporter (JSON aujourd'hui, formats texte des salles ensuite).
+
+## 6. Analyse stratégique
+
+GTO et jeu exploitant, équité et probabilités, cotes du pot et fold equity, EV, sizings, erreurs,
+bluffs et value bets, ICM et gestion du risque. La décision réelle est comparée à la décision de
+référence, **indépendamment du résultat de la main**.
+
+## 7. Adversaires, statistiques et coaching
+
+- **Profils** : VPIP, PFR, 3-bet, 4-bet, agressivité, défense des blindes, c-bet, tendances au
+  bluff ou au call, comportement par position, historique des confrontations. Chaque statistique
+  porte un indicateur de fiabilité (taille d'échantillon, intervalle de confiance).
+- **Statistiques personnelles** : gains, ROI, ITM, volume, résultats par position, évolution,
+  erreurs récurrentes, décisions coûteuses, points forts et faibles.
+- **Coaching** : exercices préflop et postflop, push/fold, ICM, quiz, simulations, parcours
+  personnalisé, détection des faiblesses, suivi de progression.
+
+## 8. Bases de données
+
+| Base | Contenu |
+|---|---|
+| Expresso | Archives 3-Max |
+| Tournois | Archives 6-Max |
+| Stratégie | Ranges, simulations, références |
+| Utilisateurs | Parties, statistiques, progression |
+
+Avant tout entraînement, les archives sont nettoyées, structurées, dédupliquées et validées par
+rejeu. Licence vérifiée pour chaque source.
+
+## 9. Architecture
+
+```
+STRATYX/
+├── apps/            desktop · mobile · server
+├── capture/         capture d'écran (API système)
+├── video/           import, décodage, enregistrement, horodatage
+├── vision/          reconnaissance avec score de confiance
+├── poker/           moteur commun : cartes, évaluation, ranges, équité, règles, pots, ICM
+├── ai/              training · inference · expresso_3max · tournament_6max
+├── strategy/        ranges de référence, push/fold, solveurs
+├── analytics/       analyse des mains, profils, statistiques
+├── coaching/        exercices, quiz, parcours
+├── database/        persistance des quatre bases
+├── security/        chiffrement, authentification, RGPD
+├── shared/          types transverses (jetons, confiance, provenance)
+└── tools/cli/       outil en ligne de commande `stratyx`
+```
+
+Dépendances autorisées : `shared` ← `poker` ← (`vision`, `strategy`, `ai/*`, `analytics`,
+`database`) ← `coaching` ← `apps/*`. Aucun cycle. Le moteur `poker` ne dépend d'aucun module
+d'entrée-sortie.
+
+## 10. Sécurité et conformité
+
+Chiffrement et authentification, autorisations de capture, protection des vidéos et historiques,
+suppression et export des données, sauvegardes. Respect du RGPD et du droit à l'image,
+vérification des licences des archives, respect des conditions des salles. **Hors périmètre :
+toute assistance stratégique en direct pendant une partie réelle.** Voir les points de vigilance
+de `decisions.md`.
+
+## 11. Feuille de route
+
+| Phase | Contenu | Statut |
+|---|---|---|
+| 1 | Fondations Rust et moteur poker | **En cours** : moteur livré (voir ci-dessous) |
+| 2 | Capture vidéo et reconnaissance | À faire |
+| 3 | Retranscription automatique | Format pivot et validation par rejeu déjà livrés |
+| 4 | IA Expresso et IA Tournois | À faire |
+| 5 | Analyses et statistiques | À faire |
+| 6 | Coaching et simulations | À faire |
+| 7 | Interfaces et API | À faire |
+| 8 | Tests, sécurité et optimisation | Audit des dépendances et CI déjà en place |
+
+### Phase 1 — livré
+
+- Workspace Cargo (tous les modules), audit `cargo-deny`, intégration continue.
+- `shared` : `Chips`, `Confidence`, `Source`, `Observed<T>`.
+- `poker` :
+  - cartes et ensembles de cartes ;
+  - évaluateur 5 à 7 cartes, vérifié sur les 133 784 560 mains à 7 cartes ;
+  - ranges (syntaxe standard, pondérations) ;
+  - équité exacte ou Monte-Carlo, parallèle et reproductible ;
+  - règles NLHE complètes : ordre de parole, relance minimale, tapis incomplets, antes classiques
+    et de grosse blinde, tête-à-tête ;
+  - pots secondaires et mises non suivies ;
+  - historique `HandRecord` avec provenance et confiance, validé par rejeu ;
+  - ICM exact (Malmuth-Harville) ;
+  - formules de cotes et d'EV.
+- `tools/cli` : `stratyx eval | equity | range | icm`.
+
+### Phase 1 — reste à faire
+
+- Import et export des historiques texte des salles visées (il faut des exemples réels).
+- Banc d'essai de performance (évaluations par seconde, équité par range).
+- Équilibres push/fold heads-up et 3-max (en préparation de la phase 4).

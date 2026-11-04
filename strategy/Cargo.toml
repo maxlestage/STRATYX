@@ -1,0 +1,12 @@
+[package]
+name = "stratyx-strategy"
+description = "Références stratégiques : ranges, tables push/fold, solveurs et simulations partagés par les deux IA."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

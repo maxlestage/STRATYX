@@ -1,0 +1,12 @@
+[package]
+name = "stratyx-video"
+description = "Import, décodage et enregistrement vidéo ; horodatage des images pour la synchronisation des événements."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

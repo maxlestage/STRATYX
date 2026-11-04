@@ -1,0 +1,12 @@
+[package]
+name = "stratyx-ai-expresso"
+description = "IA Expresso 3-Max : push/fold, tapis courts, heads-up et jeu à trois, multiplicateurs."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true
