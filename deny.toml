@@ -106,6 +106,7 @@ allow-build-scripts = [
     "proc-macro2",
     "quote",
     "rayon-core",
+    "rustix", # capture X11 (via x11rb) : sondage de rustc uniquement
     "serde",
     "serde_core",
     "serde_json",
