@@ -6,19 +6,22 @@
 //! | [`eval`]    | force des mains (5 à 7 cartes)                                          |
 //! | [`range`]   | mains privées, 169 classes, ranges pondérées                           |
 //! | [`equity`]  | équité exacte ou Monte-Carlo, parallèle et reproductible               |
-//! | [`game`]    | règles du No-Limit Hold'em : ordre de parole, relances, tapis          |
+//! | [`format`](mod@format) | formats : cash game, tournoi, sit & go, Expresso ; 2 à 10 joueurs     |
+//! | [`game`]    | règles du Texas Hold'em : no-limit, pot-limit, limite fixe            |
 //! | [`pot`]     | pots principal/secondaires, mises non suivies, répartition             |
 //! | [`history`] | historique de main avec provenance et confiance, validation par rejeu  |
 //! | [`icm`]     | équité ICM (Malmuth-Harville)                                           |
 //! | [`odds`]    | cotes du pot, fold equity, EV, MDF                                      |
-//! | [`position`]| positions de 2 à 6 joueurs                                              |
+//! | [`position`]| positions du tête-à-tête à la table pleine (2 à 10 joueurs)           |
 //!
-//! Variante prise en charge : Texas Hold'em No-Limit (décision D4).
+//! Variante prise en charge : **Texas Hold'em** sous toutes ses formes — no-limit, pot-limit
+//! et limite fixe, cash game et tournois, du tête-à-tête à la table pleine (décision D8).
 
 pub mod card;
 pub mod cardset;
 pub mod equity;
 pub mod eval;
+pub mod format;
 pub mod game;
 pub mod history;
 pub mod icm;
@@ -30,5 +33,6 @@ pub mod range;
 pub use card::{Card, Rank, Suit};
 pub use cardset::CardSet;
 pub use eval::{HandCategory, HandRank, evaluate};
-pub use game::{Action, Blinds, HandSetup, HandState, Street};
+pub use format::{GameFormat, GameType, Specialist};
+pub use game::{Action, BettingStructure, Blinds, HandSetup, HandState, Street};
 pub use range::{HandClass, HoleCards, Range};

@@ -1,13 +1,20 @@
-//! Règles du No-Limit Hold'em : déroulement d'une main et validation de chaque action.
+//! Règles du Texas Hold'em : déroulement d'une main et validation de chaque action, en
+//! no-limit, pot-limit et limite fixe, de 2 à 10 joueurs.
 //!
 //! [`HandState`] est la référence unique des règles pour toute la plateforme : la
 //! retranscription vidéo y rejoue les actions détectées pour les valider, les IA s'en servent
 //! pour générer les coups légaux, et le coaching pour ses simulations.
 //!
-//! Règles appliquées (conformes aux usages des salles en ligne et aux règles TDA) :
-//! - relance minimale égale à la dernière relance complète (au moins une grosse blinde) ;
-//! - un tapis inférieur à une relance complète ne rouvre pas les enchères pour les joueurs
-//!   ayant déjà agi, sauf si plusieurs tapis incomplets cumulés atteignent une relance complète ;
+//! Règles appliquées (usages des salles en ligne, règles TDA et Robert's Rules of Poker) :
+//! - **no-limit** : relance minimale égale à la dernière relance complète (au moins une grosse
+//!   blinde) ; un tapis inférieur à une relance complète ne rouvre pas les enchères pour les
+//!   joueurs ayant déjà agi, sauf si plusieurs tapis incomplets cumulés l'atteignent ;
+//! - **pot-limit** : mêmes minimums ; relance maximale égale au pot après le call ;
+//! - **limite fixe** : mises d'une petite mise (= grosse blinde) au préflop et au flop, d'une
+//!   grosse mise (= deux grosses blindes) au turn et à la river ; une mise et trois relances au
+//!   plus par tour (plafond levé en tête-à-tête, voir [`BettingStructure`]) ; un tapis d'au
+//!   moins une demi-mise compte comme une mise complète, en dessous il ne rouvre pas les
+//!   enchères et les joueurs suivants peuvent le compléter ;
 //! - en tête-à-tête, le bouton est petite blinde, parle en premier préflop et en dernier ensuite ;
 //! - le jeton indivisible va au premier gagnant à gauche du bouton.
 
@@ -112,6 +119,49 @@ impl Blinds {
     }
 }
 
+/// Structure de mise du Texas Hold'em.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum BettingStructure {
+    /// No-limit : toute mise jusqu'au tapis.
+    #[default]
+    NoLimit,
+    /// Pot-limit : mise ou relance plafonnée à la taille du pot (après le call).
+    PotLimit,
+    /// Limite fixe : montants imposés, nombre de mises plafonné.
+    FixedLimit {
+        /// Nombre maximal de mises complètes par tour (mise + relances). `None` : illimité.
+        max_bets: Option<u8>,
+        /// Plafond levé dès qu'il ne reste que deux joueurs dans le coup (usage des cash
+        /// games). Dans tous les cas, il est levé quand seuls deux joueurs sont servis.
+        uncapped_heads_up: bool,
+    },
+}
+
+impl BettingStructure {
+    /// Limite fixe des cash games : une mise et trois relances, plafond levé en tête-à-tête.
+    pub const FIXED_LIMIT_CASH: BettingStructure = BettingStructure::FixedLimit {
+        max_bets: Some(4),
+        uncapped_heads_up: true,
+    };
+
+    /// Limite fixe des tournois : plafond maintenu tant que plus de deux joueurs sont servis.
+    pub const FIXED_LIMIT_TOURNAMENT: BettingStructure = BettingStructure::FixedLimit {
+        max_bets: Some(4),
+        uncapped_heads_up: false,
+    };
+
+    /// Abréviation usuelle : `NL`, `PL`, `FL`.
+    #[must_use]
+    pub const fn abbreviation(self) -> &'static str {
+        match self {
+            BettingStructure::NoLimit => "NL",
+            BettingStructure::PotLimit => "PL",
+            BettingStructure::FixedLimit { .. } => "FL",
+        }
+    }
+}
+
 /// Situation de départ d'une main. Les joueurs sont indexés de `0` à `n - 1` dans le sens
 /// des aiguilles d'une montre ; seuls les joueurs servis y figurent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,6 +169,27 @@ pub struct HandSetup {
     pub stacks: Vec<Chips>,
     pub button: usize,
     pub blinds: Blinds,
+    #[serde(default)]
+    pub structure: BettingStructure,
+}
+
+impl HandSetup {
+    /// Main de no-limit ; voir [`HandSetup::with_structure`] pour les autres structures.
+    #[must_use]
+    pub fn new(stacks: Vec<Chips>, button: usize, blinds: Blinds) -> HandSetup {
+        HandSetup {
+            stacks,
+            button,
+            blinds,
+            structure: BettingStructure::NoLimit,
+        }
+    }
+
+    #[must_use]
+    pub fn with_structure(mut self, structure: BettingStructure) -> HandSetup {
+        self.structure = structure;
+        self
+    }
 }
 
 /// Action demandée par un joueur. Les montants de `Bet` et `Raise` sont des totaux
@@ -199,6 +270,8 @@ pub struct PlayerState {
     needs_action: bool,
     /// Mise à suivre au moment de la dernière action volontaire sur ce tour.
     last_faced: Option<Chips>,
+    /// Nombre de mises complètes du tour au moment de cette action (limite fixe).
+    bets_seen: u8,
 }
 
 impl PlayerState {
@@ -293,13 +366,19 @@ pub enum GameError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HandState {
     blinds: Blinds,
+    structure: BettingStructure,
     button: usize,
     players: Vec<PlayerState>,
     street: Street,
     phase: Phase,
     board: Vec<Card>,
     current_bet: Chips,
+    /// Dernière relance complète (no-limit et pot-limit).
     min_raise: Chips,
+    /// Niveau sur lequel se calcule la prochaine relance (limite fixe).
+    raise_base: Chips,
+    /// Mises complètes sur le tour en cours (la grosse blinde compte pour une au préflop).
+    bets: u8,
     to_act: Option<usize>,
     actions: Vec<AppliedAction>,
 }
@@ -336,10 +415,18 @@ impl HandState {
                 status: PlayerStatus::Active,
                 needs_action: true,
                 last_faced: None,
+                bets_seen: 0,
             })
             .collect();
+        if let BettingStructure::FixedLimit {
+            max_bets: Some(0), ..
+        } = setup.structure
+        {
+            return invalid("le plafond de mises doit être d'au moins une mise");
+        }
         let mut state = HandState {
             blinds: setup.blinds,
+            structure: setup.structure,
             button: setup.button,
             players,
             street: Street::Preflop,
@@ -347,6 +434,8 @@ impl HandState {
             board: Vec::new(),
             current_bet: setup.blinds.big_blind,
             min_raise: setup.blinds.big_blind,
+            raise_base: setup.blinds.big_blind,
+            bets: 1,
             to_act: None,
             actions: Vec::new(),
         };
@@ -452,6 +541,27 @@ impl HandState {
         self.blinds
     }
 
+    #[must_use]
+    pub fn structure(&self) -> BettingStructure {
+        self.structure
+    }
+
+    /// Mises complètes sur le tour en cours (2 = relance, 3 = 3-bet…).
+    #[must_use]
+    pub fn bets_this_street(&self) -> u8 {
+        self.bets
+    }
+
+    /// Montant d'une mise en limite fixe sur le tour en cours : petite mise (grosse blinde)
+    /// au préflop et au flop, grosse mise (deux grosses blindes) au turn et à la river.
+    #[must_use]
+    pub fn limit_bet_size(&self) -> Chips {
+        match self.street {
+            Street::Preflop | Street::Flop => self.blinds.big_blind,
+            Street::Turn | Street::River => self.blinds.big_blind + self.blinds.big_blind,
+        }
+    }
+
     /// Mise à suivre sur le tour en cours.
     #[must_use]
     pub fn current_bet(&self) -> Chips {
@@ -470,7 +580,7 @@ impl HandState {
         self.players.iter().map(PlayerState::invested).sum()
     }
 
-    /// Position du joueur (tables de 2 à 6 joueurs).
+    /// Position du joueur (tables de 2 à 10 joueurs).
     #[must_use]
     pub fn position(&self, player: usize) -> Option<Position> {
         let n = self.players.len();
@@ -505,10 +615,60 @@ impl HandState {
         pl.needs_action || behind
     }
 
+    /// Les enchères sont-elles ouvertes pour ce joueur (règle des tapis incomplets) ?
     fn can_raise(&self, p: usize) -> bool {
-        match self.players[p].last_faced {
-            None => true,
-            Some(faced) => self.current_bet.saturating_sub(faced) >= self.min_raise,
+        let pl = &self.players[p];
+        match (self.structure, pl.last_faced) {
+            (_, None) => true,
+            (BettingStructure::FixedLimit { .. }, Some(_)) => self.bets > pl.bets_seen,
+            (_, Some(faced)) => self.current_bet.saturating_sub(faced) >= self.min_raise,
+        }
+    }
+
+    /// Bornes `(min, max)` d'une mise ou d'une relance « à » pour le joueur, ou la raison
+    /// pour laquelle il ne peut que suivre ou se coucher.
+    fn aggression_bounds(&self, p: usize) -> Result<(Chips, Chips), String> {
+        let pl = &self.players[p];
+        let all_in_to = pl.street_bet + pl.stack;
+        if all_in_to <= self.current_bet {
+            return Err("tapis insuffisant pour relancer : il ne peut que suivre".into());
+        }
+        if !self.current_bet.is_zero() && !self.can_raise(p) {
+            return Err(
+                "les enchères ne sont pas rouvertes (tapis inférieur à une relance complète)"
+                    .into(),
+            );
+        }
+        let nominal_min = if self.current_bet.is_zero() {
+            self.blinds.big_blind
+        } else {
+            self.current_bet + self.min_raise
+        };
+        match self.structure {
+            BettingStructure::NoLimit => Ok((nominal_min.min(all_in_to), all_in_to)),
+            BettingStructure::PotLimit => {
+                let call = self.current_bet - pl.street_bet;
+                let pot_max = self.current_bet + self.pot_total() + call;
+                let max = pot_max.min(all_in_to);
+                Ok((nominal_min.min(max), max))
+            }
+            BettingStructure::FixedLimit {
+                max_bets,
+                uncapped_heads_up,
+            } => {
+                let heads_up =
+                    self.players.len() == 2 || (uncapped_heads_up && self.in_hand() == 2);
+                if !heads_up && max_bets.is_some_and(|m| self.bets >= m) {
+                    return Err(format!("plafond atteint : {} mises sur ce tour", self.bets));
+                }
+                let base = if self.current_bet.is_zero() {
+                    Chips::ZERO
+                } else {
+                    self.raise_base
+                };
+                let to = (base + self.limit_bet_size()).min(all_in_to);
+                Ok((to, to))
+            }
         }
     }
 
@@ -536,6 +696,8 @@ impl HandState {
         }
         self.current_bet = Chips::ZERO;
         self.min_raise = self.blinds.big_blind;
+        self.raise_base = Chips::ZERO;
+        self.bets = 0;
         self.phase = match self.street.next() {
             Some(next) => Phase::AwaitingBoard(next),
             None => Phase::Showdown,
@@ -549,12 +711,14 @@ impl HandState {
     pub fn legal_actions(&self) -> Option<LegalActions> {
         let p = self.to_act?;
         let pl = &self.players[p];
-        let max_to = pl.street_bet + pl.stack;
         let behind = self.current_bet.saturating_sub(pl.street_bet);
         let call = (!behind.is_zero()).then(|| behind.min(pl.stack));
-        let bet = (self.current_bet.is_zero()).then(|| (self.blinds.big_blind.min(max_to), max_to));
-        let raise = (!self.current_bet.is_zero() && max_to > self.current_bet && self.can_raise(p))
-            .then(|| ((self.current_bet + self.min_raise).min(max_to), max_to));
+        let bounds = self.aggression_bounds(p).ok();
+        let (bet, raise) = if self.current_bet.is_zero() {
+            (bounds, None)
+        } else {
+            (None, bounds)
+        };
         Some(LegalActions {
             player: p,
             fold: true,
@@ -612,42 +776,29 @@ impl HandState {
                 let add = (self.current_bet - pl.street_bet).min(pl.stack);
                 self.record(player, ActionKind::Call, add)
             }
-            Action::Bet(to) => {
-                if !self.current_bet.is_zero() {
+            Action::Bet(to) | Action::Raise(to) => {
+                let is_bet = matches!(action, Action::Bet(_));
+                if is_bet && !self.current_bet.is_zero() {
                     return Err(illegal("une mise est déjà engagée : utiliser raise".into()));
                 }
-                if to.is_zero() || to > max_to {
-                    return Err(illegal(format!("montant hors limites (max {max_to})")));
-                }
-                if to < self.blinds.big_blind && to != max_to {
-                    return Err(illegal(format!(
-                        "mise minimale : {} (sauf tapis)",
-                        self.blinds.big_blind
-                    )));
-                }
-                self.aggress(player, to, ActionKind::Bet)
-            }
-            Action::Raise(to) => {
-                if self.current_bet.is_zero() {
+                if !is_bet && self.current_bet.is_zero() {
                     return Err(illegal("aucune mise à relancer : utiliser bet".into()));
                 }
-                if !self.can_raise(player) {
-                    return Err(illegal(
-                        "les enchères ne sont pas rouvertes (tapis inférieur à une relance complète)"
-                            .into(),
-                    ));
+                let (min, max) = self.aggression_bounds(player).map_err(illegal)?;
+                if to < min || to > max {
+                    let reason = if min == max {
+                        format!("montant imposé : {min}")
+                    } else {
+                        format!("montant autorisé : de {min} à {max}")
+                    };
+                    return Err(illegal(reason));
                 }
-                if to <= self.current_bet || to > max_to {
-                    return Err(illegal(format!(
-                        "montant hors limites ({} exclu à {max_to})",
-                        self.current_bet
-                    )));
-                }
-                let min_to = self.current_bet + self.min_raise;
-                if to < min_to && to != max_to {
-                    return Err(illegal(format!("relance minimale : {min_to} (sauf tapis)")));
-                }
-                self.aggress(player, to, ActionKind::Raise)
+                let kind = if is_bet {
+                    ActionKind::Bet
+                } else {
+                    ActionKind::Raise
+                };
+                self.aggress(player, to, kind)
             }
             Action::AllIn => unreachable!("converti plus haut"),
         };
@@ -657,8 +808,24 @@ impl HandState {
 
     fn aggress(&mut self, player: usize, to: Chips, kind: ActionKind) -> AppliedAction {
         let increment = to - self.current_bet;
-        if increment >= self.min_raise {
-            self.min_raise = increment;
+        let full = match self.structure {
+            BettingStructure::FixedLimit { .. } => {
+                let base = if self.current_bet.is_zero() {
+                    Chips::ZERO
+                } else {
+                    self.raise_base
+                };
+                let unit = self.limit_bet_size();
+                to >= base + unit || increment.get() * 2 >= unit.get()
+            }
+            _ => increment >= self.min_raise,
+        };
+        if full {
+            if !matches!(self.structure, BettingStructure::FixedLimit { .. }) {
+                self.min_raise = increment;
+            }
+            self.raise_base = to;
+            self.bets = self.bets.saturating_add(1);
         }
         self.current_bet = to;
         for (i, pl) in self.players.iter_mut().enumerate() {
@@ -672,12 +839,14 @@ impl HandState {
 
     fn record(&mut self, player: usize, kind: ActionKind, add: Chips) -> AppliedAction {
         let current_bet = self.current_bet;
+        let bets = self.bets;
         let pl = &mut self.players[player];
         pl.stack -= add;
         pl.street_bet += add;
         pl.live_total += add;
         pl.needs_action = false;
         pl.last_faced = Some(current_bet);
+        pl.bets_seen = bets;
         let all_in = !add.is_zero() && pl.stack.is_zero();
         if all_in {
             pl.status = PlayerStatus::AllIn;
@@ -788,11 +957,20 @@ mod tests {
     use crate::card::parse_cards;
 
     fn setup(stacks: &[u64], button: usize, sb: u64, bb: u64) -> HandState {
-        HandState::new(&HandSetup {
-            stacks: stacks.iter().map(|s| Chips(*s)).collect(),
-            button,
-            blinds: Blinds::new(sb, bb),
-        })
+        setup_with(BettingStructure::NoLimit, stacks, button, sb, bb)
+    }
+
+    fn setup_with(
+        structure: BettingStructure,
+        stacks: &[u64],
+        button: usize,
+        sb: u64,
+        bb: u64,
+    ) -> HandState {
+        let stacks = stacks.iter().map(|s| Chips(*s)).collect();
+        HandState::new(
+            &HandSetup::new(stacks, button, Blinds::new(sb, bb)).with_structure(structure),
+        )
         .unwrap()
     }
 
@@ -946,11 +1124,11 @@ mod tests {
     #[test]
     fn antes_and_short_blinds() {
         let blinds = Blinds::new(50, 100).with_ante(Ante::BigBlind(Chips(100)));
-        let mut h = HandState::new(&HandSetup {
-            stacks: vec![Chips(1000), Chips(1000), Chips(150)],
-            button: 0,
+        let mut h = HandState::new(&HandSetup::new(
+            vec![Chips(1000), Chips(1000), Chips(150)],
+            0,
             blinds,
-        })
+        ))
         .unwrap();
         // La grosse blinde paie l'ante (100) en priorité, puis 50 de blinde : tapis.
         let bb = &h.players()[2];
@@ -965,12 +1143,7 @@ mod tests {
         assert_eq!(h.phase(), Phase::AwaitingBoard(Street::Flop));
 
         let classic = Blinds::new(50, 100).with_ante(Ante::Classic(Chips(10)));
-        let h = HandState::new(&HandSetup {
-            stacks: vec![Chips(1000); 3],
-            button: 0,
-            blinds: classic,
-        })
-        .unwrap();
+        let h = HandState::new(&HandSetup::new(vec![Chips(1000); 3], 0, classic)).unwrap();
         assert_eq!(h.pot_total(), Chips(180));
     }
 
@@ -1018,13 +1191,162 @@ mod tests {
     }
 
     #[test]
+    fn full_ring_order_and_positions() {
+        // 9 joueurs, bouton 0 : SB 1, BB 2, UTG 3 … CO 8.
+        let h = setup(&[1000; 9], 0, 50, 100);
+        assert_eq!(h.to_act(), Some(3));
+        assert_eq!(h.position(3), Some(Position::UnderTheGun));
+        assert_eq!(h.position(4), Some(Position::UnderTheGun1));
+        assert_eq!(h.position(6), Some(Position::Lojack));
+        assert_eq!(h.position(8), Some(Position::Cutoff));
+        let h = setup(&[1000; 10], 9, 50, 100);
+        assert_eq!(h.to_act(), Some(2));
+        assert_eq!(h.position(2), Some(Position::UnderTheGun));
+        assert_eq!(h.position(5), Some(Position::UnderTheGun3));
+    }
+
+    #[test]
+    fn pot_limit_bounds() {
+        // Blindes 1/2, 3 joueurs : relance « pot » préflop = 2 + 3 + 2 = 7.
+        let mut h = setup_with(BettingStructure::PotLimit, &[1000, 1000, 1000], 0, 1, 2);
+        assert_eq!(h.legal_actions().unwrap().raise, Some((Chips(4), Chips(7))));
+        assert!(h.apply(0, Action::Raise(Chips(8))).is_err());
+        assert!(h.apply(0, Action::AllIn).is_err(), "tapis au-delà du pot");
+        h.apply(0, Action::Raise(Chips(7))).unwrap();
+        // SB : 7 + (7 + 2 + 1) + (7 - 1) = 23.
+        assert_eq!(
+            h.legal_actions().unwrap().raise,
+            Some((Chips(12), Chips(23)))
+        );
+        h.apply(1, Action::Call).unwrap();
+        h.apply(2, Action::Fold).unwrap();
+        deal(&mut h, "Ah7c2d");
+        // Pot de 16 : mise maximale 16.
+        assert_eq!(h.legal_actions().unwrap().bet, Some((Chips(2), Chips(16))));
+        h.apply(1, Action::Bet(Chips(8))).unwrap();
+        // Exemple de référence : 8 dans 16 → call 8, pot 32, relance à 8 + 32 = 40.
+        assert_eq!(
+            h.legal_actions().unwrap().raise,
+            Some((Chips(16), Chips(40)))
+        );
+    }
+
+    #[test]
+    fn fixed_limit_sizes_and_cap() {
+        let fl = BettingStructure::FIXED_LIMIT_CASH;
+        // Limite 2/4 : blindes 1/2, 4 joueurs, UTG = joueur 3.
+        let mut h = setup_with(fl, &[1000; 4], 0, 1, 2);
+        let legal = h.legal_actions().unwrap();
+        assert_eq!(legal.raise, Some((Chips(4), Chips(4))));
+        assert!(
+            h.apply(3, Action::Raise(Chips(5))).is_err(),
+            "montant imposé"
+        );
+        h.apply(3, Action::Raise(Chips(4))).unwrap();
+        h.apply(0, Action::Raise(Chips(6))).unwrap();
+        h.apply(1, Action::Raise(Chips(8))).unwrap(); // 4e mise : plafond
+        assert_eq!(h.bets_this_street(), 4);
+        let legal = h.legal_actions().unwrap();
+        assert_eq!(legal.player, 2);
+        assert_eq!(legal.raise, None);
+        assert!(h.apply(2, Action::Raise(Chips(10))).is_err());
+        h.apply(2, Action::Call).unwrap();
+        h.apply(3, Action::Call).unwrap();
+        h.apply(0, Action::Call).unwrap();
+        deal(&mut h, "Ah7c2d");
+        assert_eq!(h.legal_actions().unwrap().bet, Some((Chips(2), Chips(2))));
+        h.apply(1, Action::Check).unwrap();
+        h.apply(2, Action::Check).unwrap();
+        h.apply(3, Action::Check).unwrap();
+        h.apply(0, Action::Check).unwrap();
+        deal(&mut h, "Ks");
+        // Turn : grosse mise.
+        assert_eq!(h.legal_actions().unwrap().bet, Some((Chips(4), Chips(4))));
+    }
+
+    #[test]
+    fn fixed_limit_heads_up_cap() {
+        // Cash game : plafond levé quand il ne reste que deux joueurs dans le coup.
+        let mut h = setup_with(BettingStructure::FIXED_LIMIT_CASH, &[1000; 3], 0, 1, 2);
+        h.apply(0, Action::Fold).unwrap();
+        for to in [4, 6, 8, 10, 12] {
+            let p = h.to_act().unwrap();
+            h.apply(p, Action::Raise(Chips(to))).unwrap();
+        }
+        // Tournoi : plafond maintenu à trois joueurs servis.
+        let mut h = setup_with(
+            BettingStructure::FIXED_LIMIT_TOURNAMENT,
+            &[1000; 3],
+            0,
+            1,
+            2,
+        );
+        h.apply(0, Action::Fold).unwrap();
+        h.apply(1, Action::Raise(Chips(4))).unwrap();
+        h.apply(2, Action::Raise(Chips(6))).unwrap();
+        h.apply(1, Action::Raise(Chips(8))).unwrap();
+        assert_eq!(h.legal_actions().unwrap().raise, None);
+    }
+
+    #[test]
+    fn fixed_limit_short_all_ins() {
+        let fl = BettingStructure::FIXED_LIMIT_CASH;
+        // Unité de 20 au flop (blindes 10/20). BTN 0, SB 1, BB 2 (tapis court), UTG 3.
+        let mut h = setup_with(fl, &[1000, 1000, 45, 1000], 0, 10, 20);
+        h.apply(3, Action::Call).unwrap();
+        h.apply(0, Action::Call).unwrap();
+        h.apply(1, Action::Call).unwrap();
+        h.apply(2, Action::Check).unwrap();
+        deal(&mut h, "Ah7c2d");
+        h.apply(1, Action::Bet(Chips(20))).unwrap();
+        // BB à tapis pour 25 : +5, moins d'une demi-mise → relance incomplète.
+        let a = h.apply(2, Action::AllIn).unwrap();
+        assert_eq!(
+            (a.kind, a.to, a.all_in),
+            (ActionKind::Raise, Chips(25), true)
+        );
+        // UTG n'a pas encore agi : il peut compléter à 40 (20 + 20).
+        assert_eq!(
+            h.legal_actions().unwrap().raise,
+            Some((Chips(40), Chips(40)))
+        );
+        h.apply(3, Action::Call).unwrap();
+        h.apply(0, Action::Call).unwrap();
+        // La SB a misé 20 avant le tapis incomplet : elle ne peut que suivre.
+        assert_eq!(h.legal_actions().unwrap().raise, None);
+        assert_eq!(h.legal_actions().unwrap().call, Some(Chips(5)));
+
+        // Tapis d'au moins une demi-mise : compte comme une relance complète.
+        let mut h = setup_with(fl, &[1000, 1000, 50, 1000], 0, 10, 20);
+        h.apply(3, Action::Call).unwrap();
+        h.apply(0, Action::Call).unwrap();
+        h.apply(1, Action::Call).unwrap();
+        h.apply(2, Action::Check).unwrap();
+        deal(&mut h, "Ah7c2d");
+        h.apply(1, Action::Bet(Chips(20))).unwrap();
+        h.apply(2, Action::AllIn).unwrap(); // 30 : +10 = demi-mise
+        assert_eq!(h.bets_this_street(), 2);
+        // Relance suivante : 30 + 20 = 50 ; la SB pourra relancer à son tour.
+        assert_eq!(
+            h.legal_actions().unwrap().raise,
+            Some((Chips(50), Chips(50)))
+        );
+        h.apply(3, Action::Call).unwrap();
+        h.apply(0, Action::Call).unwrap();
+        assert_eq!(
+            h.legal_actions().unwrap().raise,
+            Some((Chips(50), Chips(50)))
+        );
+    }
+
+    #[test]
     fn invalid_setups() {
         let bad = |stacks: Vec<u64>, button, sb, bb| {
-            HandState::new(&HandSetup {
-                stacks: stacks.into_iter().map(Chips).collect(),
+            HandState::new(&HandSetup::new(
+                stacks.into_iter().map(Chips).collect(),
                 button,
-                blinds: Blinds::new(sb, bb),
-            })
+                Blinds::new(sb, bb),
+            ))
             .is_err()
         };
         assert!(bad(vec![100], 0, 1, 2));

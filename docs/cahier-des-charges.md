@@ -1,11 +1,11 @@
 # Cahier des charges — Stratyx
 
-**Version 1.0 — verrouillée le 2026-11-04.** Les décisions de cadrage D1 à D7 sont détaillées dans
+**Version 1.1 — 2026-11-04** (D8 : couverture complète du Texas Hold'em). Les décisions de cadrage D1 à D8 sont détaillées dans
 [`decisions.md`](decisions.md).
 
 ## 1. Objet
 
-Logiciel professionnel d'analyse de poker. Il capture l'écran ou importe une vidéo, retranscrit
+Logiciel professionnel d'analyse de **Texas Hold'em**. Il capture l'écran ou importe une vidéo, retranscrit
 automatiquement chaque main, l'analyse en profondeur et aide le joueur à progresser grâce à deux IA
 spécialisées.
 
@@ -21,7 +21,7 @@ automatiquement par `cargo deny check`.
 | D1 | Politique Rust | Rust partout, API natives des systèmes autorisées |
 | D2 | Plateformes | Ordinateur et mobile, priorité à l'ordinateur (Windows, macOS, Linux, puis iOS, Android) |
 | D3 | Calcul IA | CPU + GPU selon le matériel (Burn : `ndarray` / `wgpu`) |
-| D4 | Variantes | Texas Hold'em No-Limit uniquement au lancement |
+| D8 | Variante | Texas Hold'em uniquement, sous toutes ses formes : no-limit, pot-limit, limite fixe ; 2 à 10 joueurs ; cash game, tournoi, sit & go, Expresso (remplace D4) |
 | D5 | Entraînement IA | Archives + simulations |
 | D6 | Utilisation | Analyse après partie et entraînement, en modes distincts |
 | D7 | Ambition | Plateforme complète avec API et services professionnels, livrée par étapes |
@@ -29,7 +29,9 @@ automatiquement par `cargo deny check`.
 ## 3. Les deux IA
 
 Elles partagent le moteur de calcul commun (`poker/`). Chacune a ses propres archives,
-entraînements, simulations et évaluations.
+entraînements, simulations et évaluations. Les autres formats de Texas Hold'em (cash game,
+tables pleines, pot-limit, limite fixe…) sont analysés par le moteur commun, sans IA dédiée
+(D8).
 
 **IA Expresso 3-Max** (`ai/expresso_3max`) : push/fold et tapis courts, ranges par position,
 heads-up et jeu à trois, stratégie préflop et postflop, multiplicateurs et structures de paiement.
@@ -40,8 +42,8 @@ postflop, gestion des tapis, ICM, bulle et table finale, adaptation aux adversai
 ## 4. Capture vidéo et vision
 
 - Capture de l'écran pendant la partie, sans aucune aide affichée (D6). Import de vidéos existantes.
-- Reconnaissance des cartes, joueurs, positions, blindes, antes, tapis, mises et actions (fold,
-  check, call, bet, raise, all-in).
+- Reconnaissance des cartes, joueurs, positions (de UTG à BB, tables de 2 à 10 joueurs),
+  blindes, antes, tapis, mises et actions (fold, check, call, bet, raise, all-in).
 - Pots principaux et secondaires calculés par le moteur.
 - Événements synchronisés avec la vidéo (horodatage en millisecondes).
 - Détections incertaines signalées : confiance sous le seuil, ou transition refusée par les règles.
@@ -76,6 +78,7 @@ référence, **indépendamment du résultat de la main**.
 |---|---|
 | Expresso | Archives 3-Max |
 | Tournois | Archives 6-Max |
+| Hold'em  | Autres formats de Texas Hold'em (cash game, tables pleines, PL, FL) |
 | Stratégie | Ranges, simulations, références |
 | Utilisateurs | Parties, statistiques, progression |
 
@@ -90,7 +93,8 @@ STRATYX/
 ├── capture/         capture d'écran (API système)
 ├── video/           import, décodage, enregistrement, horodatage
 ├── vision/          reconnaissance avec score de confiance
-├── poker/           moteur commun : cartes, évaluation, ranges, équité, règles, pots, ICM
+├── poker/           moteur commun Texas Hold'em : cartes, évaluation, ranges, équité,
+│                    règles NL/PL/FL, formats, pots, ICM
 ├── ai/              training · inference · expresso_3max · tournament_6max
 ├── strategy/        ranges de référence, push/fold, solveurs
 ├── analytics/       analyse des mains, profils, statistiques
@@ -135,8 +139,10 @@ de `decisions.md`.
   - évaluateur 5 à 7 cartes, vérifié sur les 133 784 560 mains à 7 cartes ;
   - ranges (syntaxe standard, pondérations) ;
   - équité exacte ou Monte-Carlo, parallèle et reproductible ;
-  - règles NLHE complètes : ordre de parole, relance minimale, tapis incomplets, antes classiques
-    et de grosse blinde, tête-à-tête ;
+  - règles du Texas Hold'em en no-limit, pot-limit et limite fixe : ordre de parole, relance
+    minimale, plafond de mises, tapis incomplets, antes classiques et de grosse blinde ;
+  - tables de 2 à 10 joueurs (positions UTG à BB) ;
+  - formats : cash game, tournoi, sit & go, Expresso, avec l'IA compétente pour chacun ;
   - pots secondaires et mises non suivies ;
   - historique `HandRecord` avec provenance et confiance, validé par rejeu ;
   - ICM exact (Malmuth-Harville) ;
@@ -146,5 +152,6 @@ de `decisions.md`.
 ### Phase 1 — reste à faire
 
 - Import et export des historiques texte des salles visées (il faut des exemples réels).
+- Straddles, blindes mortes et blindes postées à l'arrivée (cash game).
 - Banc d'essai de performance (évaluations par seconde, équité par range).
 - Équilibres push/fold heads-up et 3-max (en préparation de la phase 4).
