@@ -20,6 +20,8 @@ members = [
     "apps/mobile",
     "tools/cli",
 ]
+# Le site web est un crate autonome (Paquets, WebAssembly) : voir site/README.md.
+exclude = ["site"]
 
 [workspace.package]
 version = "0.1.0"

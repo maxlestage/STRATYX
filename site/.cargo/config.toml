@@ -1,0 +1,4 @@
+# `getrandom` (utilisé par `rand`, dépendance du moteur) lit le hasard du navigateur
+# (crypto.getRandomValues) quand il est compilé en WebAssembly.
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

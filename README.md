@@ -46,6 +46,7 @@ cargo run --release -p stratyx-cli -- icm --stacks 5000,3000,2000 --payouts 50,3
 | `coaching` | exercices, quiz, parcours | 6 |
 | `apps/*` | bureau, mobile, serveur et API | 7 |
 | `security` | chiffrement, authentification, RGPD | 8 |
+| `site` | site web en Rust (Paquets, WebAssembly) avec démos du moteur : voir [`site/README.md`](site/README.md) | — |
 
 ## Règle « 100 % Rust »
 
