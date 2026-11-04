@@ -364,10 +364,10 @@ fn all_in_ev(hand: &ParsedHand<'_>, hero: usize, options: &EquityOptions) -> All
             equity: eq,
         });
     }
-    if let Some((p, amount)) = breakdown.uncalled {
-        if p == hero {
-            expected += amount.get() as f64;
-        }
+    if let Some((p, amount)) = breakdown.uncalled
+        && p == hero
+    {
+        expected += amount.get() as f64;
     }
     let invested = state.players()[hero].invested().get() as f64;
     AllIn::Ev(AllInEv {

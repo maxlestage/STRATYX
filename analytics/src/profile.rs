@@ -727,10 +727,8 @@ pub(crate) fn hand_facts(hand: &ParsedHand<'_>) -> Vec<PlayerHandFacts> {
         if hand.saw_flop(p) && finished {
             f.mark(StatKind::WentToShowdown, showdown);
         }
-        if showdown {
-            if let Some(won) = hand.pot_winnings(p) {
-                f.mark(StatKind::WonAtShowdown, !won.is_zero());
-            }
+        if showdown && let Some(won) = hand.pot_winnings(p) {
+            f.mark(StatKind::WonAtShowdown, !won.is_zero());
         }
     }
     facts

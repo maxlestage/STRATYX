@@ -170,11 +170,11 @@ impl<W: Write> Write for StreamEncryptor<W> {
             let (head, tail) = rest.split_at(take);
             self.buffer.extend_from_slice(head);
             rest = tail;
-            if self.buffer.len() == self.chunk_size {
-                if let Err(e) = self.emit_full_chunk() {
-                    self.failed = true;
-                    return Err(e.into());
-                }
+            if self.buffer.len() == self.chunk_size
+                && let Err(e) = self.emit_full_chunk()
+            {
+                self.failed = true;
+                return Err(e.into());
             }
         }
         Ok(data.len())
