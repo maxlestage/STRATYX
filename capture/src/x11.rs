@@ -57,10 +57,10 @@ impl X11Capturer {
             .get_property(false, w, net_name, utf8, 0, 1024)
             .map_err(backend)?
             .reply();
-        if let Ok(r) = reply {
-            if !r.value.is_empty() {
-                return Ok(String::from_utf8_lossy(&r.value).into_owned());
-            }
+        if let Ok(r) = reply
+            && !r.value.is_empty()
+        {
+            return Ok(String::from_utf8_lossy(&r.value).into_owned());
         }
         let r = self
             .conn
