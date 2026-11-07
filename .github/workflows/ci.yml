@@ -1,9 +1,12 @@
+# Teste chaque push. Quand tout est vert, la branche est fusionnée dans master
+# automatiquement (sauf les branches wip/...), puis le site est redéployé sur
+# GitHub Pages.
 name: CI
 
 on:
   push:
-    branches: [master, main]
   pull_request:
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -41,3 +44,68 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
+
+  site:
+    name: Site web (Paquets, WebAssembly)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - name: Cible WebAssembly (toolchain de rust-toolchain.toml)
+        run: rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: site
+      - name: Formatage
+        run: cargo fmt --check
+      - name: Lint
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Lint WebAssembly
+        run: cargo clippy --locked --lib --target wasm32-unknown-unknown -- -D warnings
+      - name: Tests
+        run: cargo test --locked
+
+  merge:
+    name: Fusion dans master
+    needs: [test, audit, site]
+    if: >-
+      github.event_name == 'push' && github.ref_name != 'master' &&
+      github.ref_name != 'main' && !startsWith(github.ref_name, 'wip/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    concurrency:
+      group: merge-into-master
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+      - name: Fusion de ${{ github.ref_name }}
+        env:
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$SHA"
+          if git merge-base --is-ancestor "$SHA" HEAD; then
+            echo "$BRANCH est déjà dans master."
+            exit 0
+          fi
+          git merge --no-ff --no-edit "$SHA" -m "Fusion de '$BRANCH' dans master (automatique)"
+          git push origin HEAD:master
+      # Un push fait par un workflow ne lance aucun autre workflow : on lance le déploiement.
+      - name: Déployer le site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref master --repo "$GITHUB_REPOSITORY"
