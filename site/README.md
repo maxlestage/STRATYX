@@ -71,6 +71,10 @@ statique, publication.
 
 **Une seule fois** : Settings → Pages → Source : « GitHub Actions ».
 
+**Fusion automatique** : la CI (`.github/workflows/ci.yml`) teste chaque push, sur toutes les
+branches. Quand tout est vert, la branche est fusionnée dans `master` (sauf `wip/...`) et le
+site est redéployé.
+
 L'export rend chaque page avec le vrai serveur Paquets (sans ouvrir de port) :
 
 ```bash
