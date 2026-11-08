@@ -48,6 +48,31 @@ cargo run --release -p stratyx-cli -- icm --stacks 5000,3000,2000 --payouts 50,3
 | `security` | chiffrement, authentification, RGPD | 8 |
 | `site` | site web en Rust (Paquets, WebAssembly) avec démos du moteur : voir [`site/README.md`](site/README.md) | — |
 
+## Déployer le site depuis son téléphone (Heroku)
+
+[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/maxlestage/STRATYX)
+
+Le site web (`site/`) se déploie sur Heroku avec le buildpack
+[emk/rust](https://elements.heroku.com/buildpacks/emk/heroku-buildpack-rust), stack
+heroku-26 : [`app.json`](app.json), [`RustConfig`](RustConfig),
+[`heroku-build.sh`](heroku-build.sh) (serveur + WebAssembly), [`Procfile`](Procfile).
+
+1. **Première mise en ligne** : touchez le bouton ci-dessus, choisissez un nom d'app,
+   touchez *Deploy app*. La première compilation prend une quinzaine de minutes.
+2. **Déploiements automatiques** : sur GitHub, *Settings → Secrets and variables →
+   Actions* :
+   - onglet *Secrets* : `HEROKU_API_KEY` (Heroku → *Account settings* → *API Key* →
+     *Reveal*) ;
+   - onglet *Variables* : `HEROKU_APP_NAME`, le nom de l'app (créée si elle n'existe pas).
+
+   Ensuite, chaque branche dont les tests passent est fusionnée dans `master`, puis
+   [`heroku.yml`](.github/workflows/heroku.yml) déploie le site. À la main : *Actions →
+   Déploiement Heroku → Run workflow* (l'application GitHub mobile le permet).
+
+Heroku n'a pas d'offre gratuite (un dyno Eco coûte environ 5 $ par mois). La liste
+d'attente et les messages sont gardés en mémoire : ils sont perdus à chaque redémarrage du
+dyno (au moins une fois par jour sur Heroku).
+
 ## Règle « 100 % Rust »
 
 `deny.toml` bloque toute dépendance qui compile du C/C++ ou embarque une bibliothèque native
