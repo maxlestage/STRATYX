@@ -1,0 +1,25 @@
+{
+  "name": "STRATYX",
+  "description": "Le site de STRATYX, plateforme d'analyse de Texas Hold'em écrite en Rust : pages, 3D et démos du moteur poker en WebAssembly. Construit avec Paquets.",
+  "repository": "https://github.com/maxlestage/STRATYX",
+  "keywords": ["rust", "poker", "texas-holdem", "wasm", "paquets"],
+  "stack": "heroku-26",
+  "buildpacks": [
+    {
+      "url": "emk/rust"
+    }
+  ],
+  "env": {
+    "SITE_URL": {
+      "description": "Adresse publique du site, pour les liens canoniques et le plan du site (ex. https://mon-app.herokuapp.com). Le déploiement automatique la remplit tout seul.",
+      "required": false
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "eco"
+    }
+  },
+  "success_url": "/"
+}

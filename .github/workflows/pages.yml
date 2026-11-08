@@ -1,16 +1,11 @@
-# Le site web (site/) sur GitHub Pages : WebAssembly, export statique, déploiement.
+# Copie statique du site web (site/) sur GitHub Pages : WebAssembly, export, déploiement.
 #
 # Une seule fois, dans le dépôt : Settings → Pages → Source : « GitHub Actions ».
 name: Site (GitHub Pages)
 
+# Le site est déployé sur Heroku (heroku.yml). Cette copie statique ne se lance plus
+# qu'à la main : Actions → Site (GitHub Pages) → Run workflow.
 on:
-  push:
-    branches: [master, main]
-    paths:
-      - "site/**"
-      - "poker/**"
-      - "shared/**"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:

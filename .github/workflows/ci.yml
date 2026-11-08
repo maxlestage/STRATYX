@@ -1,6 +1,6 @@
 # Teste chaque push. Quand tout est vert, la branche est fusionnée dans master
-# automatiquement (sauf les branches wip/...), puis le site est redéployé sur
-# GitHub Pages.
+# automatiquement (sauf les branches wip/...), puis le site est déployé sur
+# Heroku (heroku.yml).
 name: CI
 
 on:
@@ -105,7 +105,7 @@ jobs:
           git merge --no-ff --no-edit "$SHA" -m "Fusion de '$BRANCH' dans master (automatique)"
           git push origin HEAD:master
       # Un push fait par un workflow ne lance aucun autre workflow : on lance le déploiement.
-      - name: Déployer le site
+      - name: Déployer sur Heroku
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run pages.yml --ref master --repo "$GITHUB_REPOSITORY"
+        run: gh workflow run heroku.yml --ref master --repo "$GITHUB_REPOSITORY"

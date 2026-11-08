@@ -1,0 +1,11 @@
+# Heroku avec le buildpack emk/rust
+# (https://elements.heroku.com/buildpacks/emk/heroku-buildpack-rust) : le site web,
+# compilé depuis site/.
+#
+# Le buildpack lit ce fichier, installe Rust, puis lancerait un simple `cargo build
+# --release` à la racine (le workspace du produit, pas le site). Sa compilation est donc
+# sautée : heroku-build.sh compile le serveur et le bundle WebAssembly du site, une fois
+# Rust installé.
+VERSION=stable
+RUST_SKIP_BUILD=1
+trap 'status=$?; if [ "$status" -eq 0 ]; then ENV_DIR="$ENV_DIR" bash "$BUILD_DIR/heroku-build.sh" || exit 1; fi' EXIT
