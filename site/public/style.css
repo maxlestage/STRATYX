@@ -49,6 +49,11 @@ body {
   max-width: 100%;
 }
 
+/* Navigateurs sans `overflow: clip` (Safari < 16) : même coupure, avec `hidden`. */
+@supports not (overflow-x: clip) {
+  html, body { overflow-x: hidden; }
+}
+
 body::before {
   /* Un grain très léger sur tout le site. */
   content: "";
@@ -344,7 +349,7 @@ html:not(.motion) [data-reveal], html:not(.motion) .split .wi { animation: sans-
 .hero-proof li + li::before { display: none; content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--faint); margin-right: 16px; align-self: center; }
 
 .pill {
-  display: inline-flex; align-items: center; gap: 10px; padding: 6px 14px 6px 6px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 10px; padding: 6px 14px 6px 6px; border-radius: 999px; max-width: 100%;
   border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px);
   font-size: 0.9rem; color: var(--muted); transition: border-color 0.3s, color 0.3s;
 }
@@ -453,7 +458,7 @@ html:not(.motion) [data-reveal], html:not(.motion) .split .wi { animation: sans-
 /* ————— Atelier ————— */
 
 .atelier {
-  display: grid; grid-template-columns: 1fr 320px; gap: 22px;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px;
   border-radius: 28px; border: 1px solid var(--line); padding: 14px;
   background: linear-gradient(160deg, rgba(22, 199, 132, 0.12), rgba(255, 255, 255, 0.02) 50%);
   box-shadow: 0 40px 100px -50px rgba(22, 199, 132, 0.6);
@@ -664,7 +669,7 @@ html:not(.motion) [data-reveal], html:not(.motion) .split .wi { animation: sans-
 .field { display: grid; gap: 8px; border: 0; padding: 0; margin: 0; min-width: 0; }
 .field label, .field legend { font-size: 0.88rem; color: var(--muted); font-weight: 500; padding: 0; margin-bottom: 8px; }
 input, select, textarea {
-  width: 100%; font: inherit; color: var(--text); background: rgba(255, 255, 255, 0.04);
+  width: 100%; max-width: 100%; min-width: 0; font: inherit; color: var(--text); background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--line-2); border-radius: 14px; padding: 14px 16px;
   transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
 }
@@ -693,7 +698,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--v
 .blip { position: absolute; left: 58%; top: 40%; width: 10px; height: 10px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 0 rgba(242, 193, 78, 0.7); animation: ping 2s ease-out infinite; }
 @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(242, 193, 78, 0.7); } 100% { box-shadow: 0 0 0 26px rgba(242, 193, 78, 0); } }
 .next-steps { counter-reset: s; display: grid; gap: 14px; }
-.next-steps li { counter-increment: s; display: grid; grid-template-columns: 30px 1fr; gap: 12px; color: var(--muted); font-size: 0.95rem; }
+.next-steps li { counter-increment: s; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 12px; color: var(--muted); font-size: 0.95rem; }
 .next-steps li::before { content: counter(s); width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font: 600 0.8rem/1 var(--display); color: #04140c; background: var(--violet); }
 
 /* Merci et 404. */
@@ -928,7 +933,7 @@ code { font: 500 0.88em ui-monospace, SFMono-Regular, Menlo, monospace; color: v
 
 /* Feuille de route. */
 .roadmap { display: grid; gap: 18px; position: relative; padding-left: 0; }
-.phase { display: grid; grid-template-columns: 56px 1fr; gap: 18px; align-items: start; }
+.phase { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 18px; align-items: start; }
 .phase-num { width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center; font: 700 1.2rem/1 var(--display); background: var(--bg-3); border: 1px solid var(--line-2); }
 .phase.now .phase-num { background: var(--violet); color: #04140c; border-color: var(--violet); box-shadow: 0 0 0 8px rgba(22, 199, 132, 0.15), 0 0 30px rgba(22, 199, 132, 0.6); animation: pulse-ring 2.4s ease-in-out infinite; }
 .phase.started .phase-num { border-color: var(--gold); color: var(--gold); }
@@ -950,9 +955,10 @@ code { font: 500 0.88em ui-monospace, SFMono-Regular, Menlo, monospace; color: v
 .module code { font-size: 1rem; }
 .module p { margin: 8px 0 0; font-size: 0.88rem; }
 .module.core { border-color: rgba(91, 227, 168, 0.55); background: linear-gradient(160deg, rgba(22, 199, 132, 0.18), rgba(255, 255, 255, 0.02)); }
-.terminal { margin: 30px 0 0; padding: 22px 24px; border-radius: 18px; border: 1px solid var(--line); background: #040a07; overflow-x: auto; font-size: 0.9rem; line-height: 1.8; position: relative; }
+.terminal { margin: 30px 0 0; padding: 22px 24px; border-radius: 18px; border: 1px solid var(--line); background: #040a07; overflow: hidden; overflow: clip; overflow-wrap: anywhere; font-size: 0.9rem; line-height: 1.8; position: relative; }
 .terminal::before { content: "● ● ●"; display: block; color: var(--faint); letter-spacing: 4px; font-size: 0.7rem; margin-bottom: 10px; }
-.terminal code { color: #c9f7e1; white-space: pre; }
+/* Les lignes longues passent à la ligne : jamais de barre de défilement horizontale. */
+.terminal code { color: #c9f7e1; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* Cartes volantes en CSS 3D (en-tête des pages). */
 .float-cards { display: none; position: absolute; right: 6%; top: 50%; width: 320px; height: 260px; transform: translateY(-40%); perspective: 900px; z-index: 1; pointer-events: none; }
@@ -973,7 +979,11 @@ code { font: 500 0.88em ui-monospace, SFMono-Regular, Menlo, monospace; color: v
 .fcard-back { transform: rotateY(180deg); background: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.08) 0 6px, transparent 6px 12px), linear-gradient(160deg, #0f7a52, #0a4a33); box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.85), 0 20px 40px -16px rgba(0, 0, 0, 0.9); }
 @keyframes fly { 0%, 100% { transform: translateY(0) rotate(-8deg); } 50% { transform: translateY(-22px) rotate(6deg); } }
 @keyframes flip { 0%, 35% { transform: rotateY(0); } 50%, 85% { transform: rotateY(180deg); } 100% { transform: rotateY(360deg); } }
-.lost .float-cards { display: block; position: relative; right: auto; top: auto; transform: none; margin: 0 auto 20px; height: 150px; }
+.lost .float-cards { display: block; position: relative; right: auto; top: auto; transform: none; margin: 0 auto 20px; height: 150px; width: 100%; max-width: 322px; }
+/* Sur la 404, l'éventail se resserre pour tenir dans les écrans de 320 px. */
+.lost .fcard.f1 { left: 25%; }
+.lost .fcard.f2 { left: 50%; }
+.lost .fcard.f3 { left: auto; right: 0; }
 
 /* Jeu responsable. */
 .responsible { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 16px 20px; border-radius: 18px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.025); color: var(--muted); font-size: 0.88rem; }
@@ -981,6 +991,9 @@ code { font: 500 0.88em ui-monospace, SFMono-Regular, Menlo, monospace; color: v
 .age { flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font: 700 0.95rem/1 var(--display); color: var(--coral); border: 2px solid var(--coral); }
 .newsletter-form select { width: 100%; border: 0; background-color: transparent; padding-right: 34px; color: var(--muted); }
 .newsletter-form select:focus { box-shadow: none; }
+/* En ligne (dès 641 px), le champ et la liste rétrécissent ; le bouton garde sa taille. */
+.newsletter-form > * { min-width: 0; }
+.newsletter-form .btn { flex: none; }
 
 
 
@@ -998,6 +1011,12 @@ code { font: 500 0.88em ui-monospace, SFMono-Regular, Menlo, monospace; color: v
 /* Sur mobile, le bloc de marque et les engagements prennent toute la largeur. */
 .footer-brand, .footer-contact { grid-column: 1 / -1; }
 
+/* Aucun défilement horizontal, à toutes les largeurs : les enfants des grilles et des
+   lignes flexibles peuvent rétrécir, et les mots trop longs passent à la ligne. */
+.grid-2 > *, .grid-3 > *, .grid-4 > *, .split-2 > *, .contact-grid > *, .footer-top > *,
+.footer-grid > *, .demo > *, .atelier > *, .stats > *, .modules > *, .plans > * { min-width: 0; }
+.phase-head h3, .bar-head strong { min-width: 0; overflow-wrap: anywhere; }
+
 /* Tablette. */
 @media (min-width: 641px) {
   body { font-size: 17px; }
@@ -1014,7 +1033,7 @@ code { font: 500 0.88em ui-monospace, SFMono-Regular, Menlo, monospace; color: v
   .footer-bottom { flex-direction: row; align-items: center; }
   .to-top { position: static; }
   .history li { grid-template-columns: 90px minmax(0, 1fr); gap: 20px; }
-  .icm-row { grid-template-columns: 40px 110px minmax(0, 1fr) 70px 70px; gap: 14px; }
+  .icm-row { grid-template-columns: 40px minmax(0, 110px) minmax(0, 1fr) minmax(0, 70px) minmax(0, 70px); gap: 14px; }
   .icm-stack, .icm-diff { display: block; }
   .matrix { gap: 3px; }
   .hero-proof li + li::before { display: block; }
@@ -1037,14 +1056,15 @@ code { font: 500 0.88em ui-monospace, SFMono-Regular, Menlo, monospace; color: v
   .nav-link:hover::after { transform: none; }
   .nav-cta { margin: 0 0 0 10px; }
   .grid-3, .plans { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .split-2 { grid-template-columns: 1.1fr 0.9fr; }
-  .contact-grid { grid-template-columns: 1.4fr 0.8fr; }
+  .split-2 { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); }
+  .contact-grid { grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr); }
   .contact-aside { position: sticky; }
-  .footer-top { grid-template-columns: 1.2fr 0.8fr; }
+  .footer-top { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); }
   .demo { grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; padding: 14px; border-radius: 28px; }
+  .atelier { grid-template-columns: minmax(0, 1fr) 320px; }
   .demo-stage, .table-canvas { min-height: 500px; }
   .timeline-line { left: 50%; }
-  .step { grid-template-columns: 1fr 80px 1fr; gap: 0; }
+  .step { grid-template-columns: minmax(0, 1fr) 80px minmax(0, 1fr); gap: 0; }
   .step-num { grid-column: 2; }
   .step:nth-child(odd) .step-card { grid-column: 1; }
   .step:nth-child(even) .step-card { grid-column: 3; }
@@ -1057,7 +1077,7 @@ code { font: 500 0.88em ui-monospace, SFMono-Regular, Menlo, monospace; color: v
 /* Grand écran. */
 @media (min-width: 1101px) {
   .grid-4, .stats, .modules { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .footer-grid { grid-template-columns: 1.6fr repeat(3, minmax(0, 1fr)) 1.4fr; }
+  .footer-grid { grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)) minmax(0, 1.4fr); }
   .footer-brand, .footer-contact { grid-column: auto; }
   .float-cards { opacity: 1; }
 }
