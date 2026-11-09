@@ -91,8 +91,10 @@ Sans serveur, la liste d'attente et le contact y deviennent des liens vers le d�
 
 La feuille de style vise d'abord le téléphone ; les écrans plus larges ajoutent des colonnes
 (`min-width` : 641, 961 et 1101 px). Sur mobile, rien ne glisse horizontalement : les
-apparitions sont verticales, `html` et `body` coupent tout débordement. Vérifié de 320 à
-1440 px sur chaque page.
+apparitions sont verticales, `html` et `body` coupent tout débordement (avec un repli
+`overflow-x: hidden` pour les navigateurs sans `clip`). Aucun bloc ne défile en largeur
+non plus : le terminal passe à la ligne, et les grilles utilisent `minmax(0, …)` pour leurs colonnes.
+Vérifié de 320 à 1440 px sur chaque page.
 
 ## Vérifier
 
