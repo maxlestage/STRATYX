@@ -172,6 +172,19 @@ pub fn bgrx_to_rgba(src: &[u8], width: u32, height: u32, stride: usize) -> Vec<u
 }
 
 /// Intersecte une zone demandée avec une cible de taille `width × height`.
+// Utilisée par les moteurs X11 et Windows seulement (pas encore de moteur macOS).
+#[cfg_attr(
+    not(any(
+        windows,
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
+    )),
+    allow(dead_code)
+)]
 pub(crate) fn clip_region(
     region: Option<Rect>,
     width: u32,
