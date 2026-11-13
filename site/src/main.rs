@@ -3,13 +3,14 @@
 //!
 //!     cargo run        # http://localhost:3000 (PORT en production)
 //!
-//! Les scènes 3D, les démos du moteur poker et les mouvements de la page sont des îlots
+//! Les scènes 2D (Canvas 2D), les démos du moteur poker et les mouvements de la page sont des îlots
 //! (src/lib.rs), compilés en WebAssembly dans `pkg/` : voir le README.
 
 use paquets::prelude::*;
 
 mod contenu;
 mod icones;
+mod pwa;
 
 use contenu::*;
 use icones::icone;
@@ -124,6 +125,7 @@ fn page(chemin: &str, titre: &str, description: &str, contenu: Vec<Node>) -> Pag
             r#"<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"/>"#,
             r#"<meta name="color-scheme" content="dark"/>"#,
         ))
+        .head(pwa::BALISES)
         .view_transitions()
         .prefetch(Prefetch::Hover)
         .body(curseur())
@@ -131,6 +133,72 @@ fn page(chemin: &str, titre: &str, description: &str, contenu: Vec<Node>) -> Pag
         .body(entete(chemin))
         .body(html::main().id("contenu").class("page").children(contenu))
         .body(pied_de_page())
+        .body(messages_pwa())
+}
+
+/// Les messages de l'application installable, cachés jusqu'à ce que le bundle
+/// WebAssembly les montre (src/mouvement.rs) : mise à jour, hors ligne, installation sur
+/// iPhone.
+fn messages_pwa() -> Element {
+    let fermer = || {
+        button()
+            .class("toast-close")
+            .attr("type", "button")
+            .attr("aria-label", "Fermer")
+            .attr("data-toast-fermer", "")
+            .html(icone("croix"))
+    };
+    div()
+        .class("toasts")
+        .attr("role", "status")
+        .attr("aria-live", "polite")
+        .child(
+            div()
+                .class("toast toast-maj")
+                .attr("hidden", "")
+                .child(span().class("toast-dot").attr("aria-hidden", "true"))
+                .child(
+                    p().child(strong().text("Nouvelle version disponible"))
+                        .text(" · rechargez pour en profiter."),
+                )
+                .child(
+                    button()
+                        .class("btn btn-primary btn-sm")
+                        .attr("type", "button")
+                        .attr("data-pwa-maj", "")
+                        .text("Mettre à jour"),
+                )
+                .child(fermer()),
+        )
+        .child(
+            div()
+                .class("toast toast-hors-ligne")
+                .attr("hidden", "")
+                .child(span().class("toast-dot off").attr("aria-hidden", "true"))
+                .child(
+                    p().child(strong().text("Vous êtes hors ligne"))
+                        .text(" · les outils du laboratoire et l'analyse restent disponibles."),
+                )
+                .child(fermer()),
+        )
+        .child(
+            div()
+                .class("toast toast-en-ligne")
+                .attr("hidden", "")
+                .child(span().class("toast-dot").attr("aria-hidden", "true"))
+                .child(p().child(strong().text("De retour en ligne"))),
+        )
+        .child(
+            div()
+                .class("toast toast-ios")
+                .attr("hidden", "")
+                .child(span().class("ico").html(icone("telecharger")))
+                .child(
+                    p().child(strong().text("Installer sur iPhone ou iPad"))
+                        .text(" · touchez Partager, puis « Sur l'écran d'accueil »."),
+                )
+                .child(fermer()),
+        )
 }
 
 fn curseur() -> Element {
@@ -341,7 +409,7 @@ fn pied_de_page() -> Element {
                             div()
                                 .class("status")
                                 .child(span().class("pulse").attr("aria-hidden", "true"))
-                                .text("Phase 1 en cours · moteur poker livré"),
+                                .text("Analyse de parties et IA disponibles"),
                         ),
                 )
                 .child(colonne("Produit", PIED_PRODUIT))
@@ -483,7 +551,7 @@ fn bandeau(eyebrow: &str, titre: &str, chapeau: &str) -> Node {
         .into()
 }
 
-/// Des cartes en CSS 3D qui flottent et se retournent.
+/// Des cartes à plat qui flottent et passent l'une devant l'autre (CSS 2D).
 fn cartes_volantes() -> Element {
     div()
         .class("float-cards")
@@ -653,16 +721,16 @@ async fn accueil(_req: Request) -> Page {
     let hero = section()
         .class("hero")
         .child(div().class("aurora").attr("aria-hidden", "true"))
-        .child(island("hero3d", "", stratyx_site::hero3d))
+        .child(island("hero2d", "", stratyx_site::hero2d))
         .child(
             div()
                 .class("container hero-inner")
                 .child(
                     a().class("pill")
-                        .href("/laboratoire")
+                        .href("/app")
                         .attr("data-reveal", "down")
-                        .child(span().class("pill-tag").text("Phase 1"))
-                        .text("Le moteur poker est livré : essayez-le")
+                        .child(span().class("pill-tag").text("Nouveau"))
+                        .text("Analysez vos parties avec les IA")
                         .child(span().class("arrow").html(icone("fleche"))),
                 )
                 .child(mots(h1().class("hero-title"), "Analysez chaque main. *Progressez* à chaque session."))
@@ -689,7 +757,7 @@ async fn accueil(_req: Request) -> Page {
                             a().class("btn btn-ghost btn-lg magnetic")
                                 .href("#demo")
                                 .child(span().class("play").html(icone("play")))
-                                .text("Voir la démo 3D"),
+                                .text("Voir la démo"),
                         ),
                 )
                 .child(
@@ -745,9 +813,9 @@ async fn accueil(_req: Request) -> Page {
             .child(titre_section(
                 "Démo en direct",
                 "Distribuez, le moteur *analyse*",
-                "Une table en 3D et une vraie main : à chaque carte, le moteur STRATYX, compilé en WebAssembly, évalue votre main et calcule votre équité. Changez de format, tournez autour de la table.",
+                "Une table vue de dessus et une vraie main : à chaque carte, le moteur STRATYX, compilé en WebAssembly, évalue votre main et calcule votre équité. Changez de format : 3, 6 ou 9 joueurs.",
             ))
-            .child(div().attr("data-reveal", "zoom").child(island("table3d", "", stratyx_site::table3d))),
+            .child(div().attr("data-reveal", "zoom").child(island("table2d", "", stratyx_site::table2d))),
     );
 
     let ias = section().class("section").id("ia").child(
@@ -893,6 +961,94 @@ async fn fonctionnalites(_req: Request) -> Page {
     )
 }
 
+/// Les modèles entraînés des deux IA, lus dans leurs fichiers embarqués : données, taille
+/// et précision mesurée sur des mains jamais vues.
+fn modeles_entraines() -> Node {
+    let nom_modele = |m: &str| {
+        match m {
+            "population-softmax" => "Population (softmax)",
+            "decision-mlp" => "Décision (perceptron multicouche)",
+            "decision-softmax" => "Décision (softmax, comparaison)",
+            autre => autre,
+        }
+        .to_owned()
+    };
+    let pourcent = |x: f32| format!("{:.1} %", x * 100.0).replace('.', ",");
+    let milliers = |n: usize| {
+        n.to_string()
+            .as_bytes()
+            .rchunks(3)
+            .rev()
+            .map(|c| std::str::from_utf8(c).unwrap_or(""))
+            .collect::<Vec<_>>()
+            .join("\u{202f}")
+    };
+    let carte = |titre: &'static str, b: &stratyx_strategy::ModelBundle| {
+        article()
+            .class("card models-card")
+            .attr("data-reveal", "up")
+            .child(h3().text(titre))
+            .child(p().class("muted").text(format!(
+                "{} mains simulées, {} mains d'archives réelles, {} décisions · entraîné le {}.",
+                milliers(b.provenance.simulated_hands),
+                milliers(b.provenance.archive_hands),
+                milliers(b.provenance.decisions),
+                b.provenance.date
+            )))
+            .child(
+                table()
+                    .class("models-table")
+                    .child(thead().child(
+                        tr().child(th().text("Modèle"))
+                            .child(th().text("Paramètres"))
+                            .child(th().text("Précision"))
+                            .child(th().text("Référence naïve")),
+                    ))
+                    .child(tbody().children(b.metrics.iter().map(|m| {
+                        tr().child(td().text(nom_modele(&m.model)))
+                            .child(td().text(milliers(m.parameters)))
+                            .child(td().child(strong().text(pourcent(m.accuracy))))
+                            .child(td().text(pourcent(m.baseline)))
+                    }))),
+            )
+            .child(p().class("fine").text(format!(
+                "Équilibre push/fold à {} joueurs, de {} à {} grosses blindes, par jeu fictif sur simulations.",
+                b.pushfold.players,
+                b.pushfold.depths.first().copied().unwrap_or(0.0),
+                b.pushfold.max_depth()
+            )))
+    };
+    let expresso = stratyx_analytics::bundle_for(Some(stratyx_poker::Specialist::Expresso3Max));
+    let tournois = stratyx_analytics::bundle_for(Some(stratyx_poker::Specialist::Tournament6Max));
+    section()
+        .class("section")
+        .id("modeles")
+        .child(
+            div()
+                .class("container")
+                .child(titre_section(
+                    "Modèles",
+                    "Entraînés, *mesurés*",
+                    "Précision sur environ 20 % des mains, jamais vues à l'entraînement. La référence naïve répond toujours la décision la plus fréquente. Les modèles servent la page Analyse.",
+                ))
+                .child(
+                    div()
+                        .class("grid-2")
+                        .children(expresso.map(|b| carte("IA Expresso 3-Max", b)))
+                        .children(tournois.map(|b| carte("IA Tournois 6-Max", b))),
+                )
+                .child(
+                    div().class("actions center").child(
+                        a().class("btn btn-primary magnetic")
+                            .href("/app")
+                            .text("Analyser une partie")
+                            .child(span().class("arrow").html(icone("fleche"))),
+                    ),
+                ),
+        )
+        .into()
+}
+
 async fn les_ia(_req: Request) -> Page {
     let cartes = section().class("section").child(
         div().class("container").child(
@@ -913,7 +1069,7 @@ async fn les_ia(_req: Request) -> Page {
                 [
                     ("liste", "Nettoyage", "Mains structurées, dédupliquées, validées par rejeu dans le moteur de règles."),
                     ("cadenas", "Licences", "Chaque source d'archives est vérifiée avant usage."),
-                    ("puce", "CPU et GPU", "Entraînement et inférence avec Burn, en ndarray ou wgpu."),
+                    ("puce", "Rust pur", "Entraînement et inférence en Rust, sur CPU, jusque dans le navigateur (WebAssembly)."),
                     ("cible", "Évaluations", "Chaque IA a ses propres évaluations, reproductibles à graine égale."),
                 ]
                 .into_iter()
@@ -941,6 +1097,7 @@ async fn les_ia(_req: Request) -> Page {
             ),
             cartes.into(),
             entrainement.into(),
+            modeles_entraines(),
             appel_final(),
         ],
     )
@@ -1010,6 +1167,66 @@ async fn laboratoire(_req: Request) -> Page {
     )
 }
 
+async fn analyser_partie(_req: Request) -> Page {
+    // Le texte partagé (/app?texte=… ou /app#texte=…) n'est jamais lu par le serveur : le
+    // service worker sert la page sans l'adresse complète et l'îlot le lit dans le
+    // navigateur. L'historique reste sur l'appareil.
+    let etapes = section().class("section section-alt").child(
+        div()
+            .class("container")
+            .child(titre_section(
+                "Comment ça marche",
+                "De l'historique à la *décision* juste",
+                "Tout se passe dans votre navigateur, avec le vrai moteur et les modèles entraînés des deux IA, compilés en WebAssembly. Rien n'est envoyé, et l'analyse marche hors ligne dans l'application installée.",
+            ))
+            .child(div().class("grid-4").children(
+                [
+                    ("liste", "Import", "Historiques texte PokerStars et Winamax (et formats proches), une ou plusieurs mains, cash game ou tournoi."),
+                    ("rouage", "Rejeu", "Chaque main est rejouée et validée par le moteur de règles : positions, tapis, pots, abattage."),
+                    ("cible", "Référence", "Chaque décision est comparée à l'équilibre push/fold ou à une référence EV (équité, cotes, fold equity), jamais au résultat."),
+                    ("puce", "Les IA", "Expresso 3-Max et Tournois 6-Max : modèles de décision et de population entraînés sur archives et simulations."),
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(i, (ico, titre, texte))| {
+                    div()
+                        .class("card value glow tilt")
+                        .attr("data-reveal", "up")
+                        .attr("style", format!("--d:{}ms", i * 90))
+                        .child(div().class("card-ico").html(icone(ico)))
+                        .child(h3().text(titre))
+                        .child(p().class("muted").text(texte))
+                }),
+            ))
+            .child(p().class("fine center").text(
+                "Analyse après la partie uniquement : STRATYX n'apporte aucune aide pendant une partie réelle (voir Fair-play).",
+            )),
+    );
+    page(
+        "/app",
+        "Analyser une partie",
+        "Collez un historique de main PokerStars ou Winamax : STRATYX rejoue la main et compare chaque décision à la référence de l'IA Expresso 3-Max ou Tournois 6-Max. Dans le navigateur, hors ligne compris.",
+        vec![
+            bandeau(
+                "Analyse",
+                "Analysez une *partie*",
+                "Collez une main, l'IA de votre format la rejoue et vous dit, décision par décision, ce qui coûte et ce qui rapporte.",
+            ),
+            section()
+                .class("section")
+                .id("analyse")
+                .child(div().class("container").child(island(
+                    "analyse",
+                    "",
+                    stratyx_site::analyse::analyse,
+                )))
+                .into(),
+            etapes.into(),
+            appel_final(),
+        ],
+    )
+}
+
 async fn technologie(_req: Request) -> Page {
     let principes = section().class("section").child(
         div()
@@ -1060,7 +1277,7 @@ async fn technologie(_req: Request) -> Page {
             .child(titre_section(
                 "Ce site",
                 "Lui aussi, en *Rust*",
-                "Pages rendues par Paquets sur le serveur, îlots et scènes 3D en WebAssembly (paquets::three), animations pilotées par Rust, moteur stratyx-poker dans le navigateur. Aucune ligne de JavaScript écrite à la main.",
+                "Pages rendues par Paquets sur le serveur, îlots et dessins 2D en WebAssembly (Canvas 2D), animations pilotées par Rust, moteur stratyx-poker dans le navigateur. Aucune ligne de JavaScript écrite à la main.",
             )),
     );
     page(
@@ -1122,7 +1339,7 @@ async fn feuille_de_route(_req: Request) -> Page {
             bandeau(
                 "Feuille de route",
                 "Livré par *étapes*",
-                "Huit phases, de la fondation au produit complet. La phase 1 est en cours : le moteur poker est livré et testé.",
+                "Huit phases, de la fondation au produit complet. Le moteur poker est livré et testé ; l'analyse des parties et les deux IA sont disponibles en première version.",
             ),
             phases.into(),
             appel_final(),
@@ -1510,6 +1727,39 @@ async fn plan(_req: Request) -> Page {
     )
 }
 
+/// La page montrée par le service worker quand le réseau manque et que la page demandée
+/// n'a jamais été visitée.
+async fn hors_ligne(_req: Request) -> Page {
+    page(
+        pwa::HORS_LIGNE,
+        "Hors ligne",
+        "Pas de réseau : les outils du moteur restent disponibles.",
+        vec![
+            section()
+                .class("page-hero lost")
+                .child(div().class("aurora").attr("aria-hidden", "true"))
+                .child(
+                    div()
+                        .class("container center")
+                        .child(p().class("glitch").attr("data-text", "♠").text("♠"))
+                        .child(mots(h1(), "Vous êtes *hors ligne*"))
+                        .child(p().class("lead").text(
+                            "Cette page n'a pas encore été gardée sur votre appareil. Le laboratoire et l'analyse de partie marchent sans réseau : le moteur tourne dans votre navigateur.",
+                        ))
+                        .child(
+                            div()
+                                .class("actions center")
+                                .child(a().class("btn btn-primary magnetic").href("/laboratoire").text("Le laboratoire"))
+                                .child(a().class("btn btn-ghost magnetic").href("/app").text("Analyser une partie"))
+                                .child(a().class("btn btn-ghost magnetic").href("/").text("Réessayer l'accueil")),
+                        ),
+                )
+                .into(),
+        ],
+    )
+    .seo(Seo::new().noindex(true))
+}
+
 async fn introuvable(_req: Request) -> Page {
     page(
         "/404",
@@ -1564,8 +1814,7 @@ async fn robots(_req: Request) -> String {
 
 fn app() -> App {
     // Paquets calcule une fois les empreintes CSP de `view_transitions()` et `prefetch()` en
-    // rendant une page vide ; on le fait au démarrage, avant toute page avec des îlots
-    // (corrigé dans Paquets sur la branche claude/site-vitrine-3d).
+    // rendant une page vide ; on le fait au démarrage, avant toute page avec des îlots.
     let _ = Page::new("")
         .view_transitions()
         .prefetch(Prefetch::Hover)
@@ -1576,6 +1825,7 @@ fn app() -> App {
     app.get("/fonctionnalites", fonctionnalites);
     app.get("/ia", les_ia);
     app.get("/laboratoire", laboratoire);
+    app.get("/app", analyser_partie);
     app.get("/technologie", technologie);
     app.get("/feuille-de-route", feuille_de_route);
     app.get("/fair-play", fair_play);
@@ -1588,23 +1838,28 @@ fn app() -> App {
     app.get("/plan-du-site", plan);
     app.get("/sitemap.xml", sitemap);
     app.get("/robots.txt", robots);
+    app.get(pwa::HORS_LIGNE, hors_ligne);
+    app.get("/manifest.webmanifest", |_| async {
+        Response::new()
+            .header("content-type", "application/manifest+json; charset=utf-8")
+            .header("cache-control", "no-cache")
+            .send(pwa::manifeste())
+    });
+    app.get("/sw.js", |_| async {
+        Response::new()
+            .header("content-type", "text/javascript; charset=utf-8")
+            .header("cache-control", "no-cache")
+            .header("service-worker-allowed", "/")
+            // Le worker garde les polices Google : il doit pouvoir les télécharger.
+            .header(
+                "content-security-policy",
+                "default-src 'self'; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com",
+            )
+            .send(pwa::service_worker())
+    });
     app.model::<Inscrit>();
     app.model::<Message>();
     app.health("/health");
-    app.pwa(
-        Pwa::new(NOM)
-            .short_name(NOM)
-            .description("Analyse de Texas Hold'em en Rust : retranscription, analyse stratégique et coaching.")
-            .lang("fr")
-            .start_url("/")
-            .display("standalone")
-            .theme_color("#07100c")
-            .background_color("#07100c")
-            .categories(["games", "education", "sports"])
-            .icon("/icons/icon-192.png", "192x192", "image/png")
-            .icon("/icons/icon-512.png", "512x512", "image/png")
-            .maskable_icon("/icons/icon-maskable-512.png", "512x512", "image/png"),
-    );
     app.fallback(introuvable);
     app
 }
@@ -1668,6 +1923,10 @@ mod export {
             };
             ecrire(&fichier, res.text())?;
         }
+        ecrire(
+            &dossier.join("hors-ligne").join("index.html"),
+            client.get(super::pwa::HORS_LIGNE).await.text(),
+        )?;
         ecrire(
             &dossier.join("404.html"),
             client.get("/page-introuvable").await.text(),
@@ -1764,10 +2023,17 @@ mod tests {
             assert!(html.contains("site-footer"), "{chemin}");
             assert!(html.contains("data-island=\"mouvement\""), "{chemin}");
             assert!(html.contains("manifest.webmanifest"), "{chemin}");
+            assert!(html.contains("apple-mobile-web-app-capable"), "{chemin}");
+            assert!(html.contains("toast-maj"), "{chemin}");
         }
         assert_eq!(client.get("/nulle-part").await.status(), 404);
         assert_eq!(client.get("/manifest.webmanifest").await.status(), 200);
         assert_eq!(client.get("/sw.js").await.status(), 200);
+        assert_eq!(client.get("/hors-ligne").await.status(), 200);
+        let manifeste = client.get("/manifest.webmanifest").await;
+        assert!(manifeste.text().contains("\"share_target\""));
+        let sw = client.get("/sw.js").await.text();
+        assert!(sw.contains("SKIP_WAITING"));
         assert_eq!(client.get("/sitemap.xml").await.status(), 200);
         assert_eq!(client.get("/health").await.status(), 200);
     }
@@ -1776,8 +2042,8 @@ mod tests {
     async fn les_iles_sont_rendues() {
         let client = app().test().await;
         let accueil = client.get("/").await.text();
-        assert!(accueil.contains("data-island=\"hero3d\""));
-        assert!(accueil.contains("data-island=\"table3d\""));
+        assert!(accueil.contains("data-island=\"hero2d\""));
+        assert!(accueil.contains("data-island=\"table2d\""));
         let labo = client.get("/laboratoire").await.text();
         for ile in ["equite", "grille", "icm", "jetons"] {
             assert!(labo.contains(&format!("data-island=\"{ile}\"")), "{ile}");

@@ -7,7 +7,8 @@ pub const ANNEE: &str = "2026";
 pub const DEPOT: &str = "https://github.com/maxlestage/stratyx";
 
 /// Le menu principal.
-pub const MENU: [(&str, &str); 5] = [
+pub const MENU: [(&str, &str); 6] = [
+    ("/app", "Analyse"),
     ("/fonctionnalites", "Fonctionnalités"),
     ("/ia", "Les IA"),
     ("/laboratoire", "Laboratoire"),
@@ -16,8 +17,9 @@ pub const MENU: [(&str, &str); 5] = [
 ];
 
 /// Les pages du plan du site (et du sitemap.xml).
-pub const PAGES: [(&str, &str); 11] = [
+pub const PAGES: [(&str, &str); 12] = [
     ("/", "Accueil"),
+    ("/app", "Analyser une partie"),
     ("/fonctionnalites", "Fonctionnalités"),
     ("/ia", "Les deux IA"),
     ("/laboratoire", "Laboratoire : le moteur en direct"),
@@ -31,6 +33,7 @@ pub const PAGES: [(&str, &str); 11] = [
 ];
 
 pub const PIED_PRODUIT: &[(&str, &str)] = &[
+    ("/app", "Analyse de parties"),
     ("/fonctionnalites", "Fonctionnalités"),
     ("/ia", "IA Expresso 3-Max"),
     ("/ia#tournois", "IA Tournois 6-Max"),
@@ -185,8 +188,8 @@ pub const PHASES: [(u8, &str, &str, &str, f32); 8] = [
         1,
         "Fondations et moteur poker",
         "En cours",
-        "Moteur livré : cartes, évaluateur 5 à 7 cartes, ranges, équité exacte et Monte-Carlo, règles NL/PL/FL, pots, ICM, CLI.",
-        0.85,
+        "Moteur livré : cartes, évaluateur 5 à 7 cartes, ranges, équité exacte et Monte-Carlo, règles NL/PL/FL, pots, ICM, import des historiques texte, CLI.",
+        0.92,
     ),
     (
         2,
@@ -199,22 +202,22 @@ pub const PHASES: [(u8, &str, &str, &str, f32); 8] = [
         3,
         "Retranscription automatique",
         "Commencée",
-        "Format pivot et validation par rejeu déjà livrés.",
-        0.3,
+        "Format pivot, validation par rejeu et import des historiques PokerStars et Winamax livrés.",
+        0.45,
     ),
     (
         4,
         "IA Expresso et IA Tournois",
-        "À venir",
-        "Entraînement sur archives et simulations, CPU et GPU (Burn).",
-        0.0,
+        "En cours",
+        "Livrés : équilibres push/fold à 3 et à 6, modèles de décision et de population entraînés sur archives simulées. À venir : archives sous licence, postflop approfondi, GPU.",
+        0.45,
     ),
     (
         5,
         "Analyses et statistiques",
-        "À venir",
-        "Analyse des mains, profils d'adversaires, statistiques personnelles.",
-        0.0,
+        "Commencée",
+        "Analyse des mains livrée (page Analyse et stratyx analyse). À venir : profils d'adversaires, statistiques personnelles.",
+        0.25,
     ),
     (
         6,
@@ -347,11 +350,11 @@ pub const MENTIONS: [(&str, &str); 4] = [
     ),
     (
         "Propriété intellectuelle",
-        "Le nom STRATYX, les textes, visuels, scènes 3D et le code de ce site sont protégés. Toute reproduction sans autorisation est interdite.",
+        "Le nom STRATYX, les textes, visuels, dessins 2D et le code de ce site sont protégés. Toute reproduction sans autorisation est interdite.",
     ),
     (
         "Crédits",
-        "Site écrit entièrement en Rust avec Paquets ; 3D par paquets::three (WebGL 2) ; calculs par le moteur stratyx-poker compilé en WebAssembly.",
+        "Site écrit entièrement en Rust avec Paquets ; dessins en Canvas 2D ; calculs par le moteur stratyx-poker compilé en WebAssembly.",
     ),
 ];
 
