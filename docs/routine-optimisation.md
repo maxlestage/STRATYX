@@ -451,3 +451,27 @@ lecture des 33 Mo de l'image domine probablement (bande passante mémoire).
 - 4K : réduire par 2 pendant la capture côté navigateur (`drawImage` à taille réduite) avant
   de passer l'image au WebAssembly, plutôt qu'en Rust.
 - Mesurer le vrai `pkg/stratyx_site_bg.wasm` (après `wasm-bindgen`) dans la CI du site.
+
+## 2026-11-13 — Itération 15 : la CI mesure le vrai bundle WebAssembly
+
+**Piste abandonnée.** Réduire les images 4K dans le navigateur avant la vision : c'est déjà
+le cas, `media::lire` réduit chaque image à la capture (`image_video(&video, 1280)`), une
+image 4K n'atteint jamais le Rust. L'ingestion dans la base locale, autre piste examinée, se
+fait déjà en une seule transaction par lot.
+
+**Changement** (`.github/workflows/ci.yml`) : nouveau job `bundle` qui construit le bundle
+exactement comme Heroku (`cargo build --profile wasm-release` puis `wasm-bindgen` à la
+version de `Cargo.lock`, comme `heroku-build.sh`) et publie dans le résumé du run la taille
+de `pkg/stratyx_site_bg.wasm` et `pkg/stratyx_site.js` : brute, gzip -9 et Brotli -q 11.
+Il comble l'angle mort de l'itération 9 (tailles mesurées sur le `.wasm` brut, faute de
+`wasm-bindgen` en local) et vérifie à chaque push que le bundle se construit, ce que la CI
+ne faisait pas (seul le lint WebAssembly tournait). Job informatif : `continue-on-error`,
+hors des dépendances de `merge`, il ne retarde ni ne bloque la fusion.
+
+Vérifié en local : YAML, dépendances de `merge` inchangées, extraction de la version
+(0.2.129) et script du rapport (sur un `.wasm` de substitution). Le téléchargement de
+`wasm-bindgen` n'a pas été exécuté ici : premier vrai passage en CI.
+
+**Pistes suivantes.**
+
+- Lire le résumé du premier run du job `bundle` et reporter ici les vraies tailles servies.

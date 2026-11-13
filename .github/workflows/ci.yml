@@ -75,6 +75,57 @@ jobs:
       - name: Tests
         run: cargo test --locked
 
+  # Le bundle WebAssembly tel que Heroku le sert (cargo wasm-release puis wasm-bindgen, comme
+  # heroku-build.sh), et sa taille brute, gzip et Brotli dans le résumé du run. Informatif :
+  # hors des dépendances de `merge`, il ne retarde ni ne bloque la fusion.
+  bundle:
+    name: Bundle WebAssembly (taille)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Cible WebAssembly (toolchain de rust-toolchain.toml)
+        run: rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: site
+      - name: Construire le bundle
+        run: |
+          set -euo pipefail
+          cargo build --locked --lib --target wasm32-unknown-unknown --profile wasm-release
+          version=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
+          bin="$RUNNER_TEMP/wasm-bindgen-$version"
+          mkdir -p "$bin"
+          curl -sSfL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${version}/wasm-bindgen-${version}-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz --strip-components=1 -C "$bin"
+          "$bin/wasm-bindgen" --target web --no-typescript --out-dir pkg \
+            target/wasm32-unknown-unknown/wasm-release/stratyx_site.wasm
+      - name: Taille
+        run: |
+          set -euo pipefail
+          taille() { stat -c %s "$1"; }
+          {
+            echo "### Bundle WebAssembly servi"
+            echo
+            echo "| Fichier | Brut | gzip -9 | Brotli -q 11 |"
+            echo "|---|---:|---:|---:|"
+            for f in pkg/stratyx_site_bg.wasm pkg/stratyx_site.js; do
+              gz=$(gzip -9 -c "$f" | wc -c)
+              if command -v brotli > /dev/null; then
+                br=$(brotli -q 11 -c "$f" | wc -c)
+              else
+                br="—"
+              fi
+              echo "| \`$(basename "$f")\` | $(taille "$f") | $gz | $br |"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
   merge:
     name: Fusion dans master
     needs: [test, audit, site]
