@@ -220,3 +220,31 @@ modèles entraînés). Cumul depuis le début de la routine : `AhKh QsQd` exact 
   fichiers tronqués, encodages, formats inattendus — tests de fuzzing déterministes.
 - Site : poids du bundle WebAssembly, temps de premier affichage de `/app`.
 - `Sampler::new` (`mc.rs`) reconstruit les ranges à chaque équité de la simulation.
+
+## 2026-11-13 — Itération 7 : robustesse de l'import, débordement trouvé par fuzzing
+
+**Démarche.** Nouveau test `poker/tests/import_robustesse.rs` : fuzzing déterministe de
+`import_text` suivi du rejeu de chaque main lue (ce que fait l'analyse), à partir des
+historiques d'exemple PokerStars et Winamax — troncature à chaque position, chaque ligne
+supprimée ou doublée, et 4 000 corruptions aléatoires (caractères multi-octets, BOM, `\r`,
+montants géants, mots-clés déplacés). Le test vérifie l'absence de panique.
+
+**Trouvé** (200 000 corruptions en local, 8 cas) : des tapis proches de 2⁶⁴ dans un
+historique abîmé faisaient **déborder l'addition des pots** dans `HandState::settle`
+(`attempt to add with overflow` en debug ; en release, l'addition bouclait et donnait des
+gains faux sans erreur).
+
+**Correction** (`poker/src/game.rs`) : `MAX_TOTAL_CHIPS = 2⁶²`. `HandState::new` refuse une
+main dont la somme des tapis, la grosse blinde ou l'ante dépassent ce plafond (bien au-delà
+de toute partie réelle). Tous les montants en jeu étant bornés par la somme des tapis, pots,
+relances et résultats nets (`i64`) ne peuvent plus déborder. Tests : cas limites dans
+`invalid_setups`, et un test de régression explicite (tapis à 2⁶⁴ − 1 dans l'historique
+PokerStars d'exemple) qui échoue sans le correctif. Après correction, 200 000 corruptions
+passent sans panique.
+
+**Pistes suivantes.**
+
+- Même fuzzing pour l'importeur PokerStars de la base locale
+  (`database/src/text/pokerstars_import.rs`, 978 lignes), avec ses trois fichiers réels de
+  `database/tests/data/`.
+- Site : poids du bundle WebAssembly, temps de premier affichage de `/app`.
