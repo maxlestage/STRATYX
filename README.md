@@ -90,8 +90,10 @@ heroku-26 : [`app.json`](app.json), [`RustConfig`](RustConfig),
    Déploiement Heroku → Run workflow* (l'application GitHub mobile le permet).
 
 Heroku n'a pas d'offre gratuite (un dyno Eco coûte environ 5 $ par mois). La liste
-d'attente et les messages sont gardés en mémoire : ils sont perdus à chaque redémarrage du
-dyno (au moins une fois par jour sur Heroku).
+d'attente et les messages vont dans une base PostgreSQL **gratuite** (Neon) dès que le secret
+GitHub `DATABASE_URL` existe ; sans lui, ils restent en mémoire et sont perdus à chaque
+redémarrage du dyno. Mise en place en 4 étapes : [site/README.md](site/README.md), « Base
+de données ».
 
 ## Règle « 100 % Rust »
 
