@@ -115,3 +115,38 @@ Depuis le début de la routine, `AhKh QsQd` : 78 ms → 16 ms (4 cœurs).
 - `top::<N>` n'est pas toujours inliné (~8 % des instructions) : extraction des rangs par
   `leading_zeros` déroulée.
 - `strategy/src/preflop.rs` : construction de la matrice préflop (temps, parallélisme).
+
+## 2026-11-13 — Itération 4 : Monte-Carlo, tirages moins coûteux
+
+**Constat** (callgrind, 1 fil, `AA,KK QQ,JJ TT,99`, 400 000 tirages) : 462 M instructions,
+dont seulement 26 % d'évaluation. Le reste : la recherche dichotomique du tirage pondéré
+(~105 instructions par tirage), la conversion carte → bit à chaque `contains` / `insert`
+pendant le tirage du board (~90), le `Vec` des mains (~50).
+
+**Changements** (`poker/src/equity.rs`), le générateur étant consommé exactement de la même
+façon (résultats identiques bit pour bit, vérifié sur 4 cas dont des ranges pondérées) :
+
+- `WeightedCombos` garde les combinaisons en `CardSet` et, quand tous les poids valent 1
+  (range sans pondération, le cas courant), remplace la recherche dichotomique par la partie
+  entière du tirage : les cumuls 1, 2, 3… sont exacts en `f64`, l'indice est le même. Test
+  dédié : même combinaison tirée que la recherche, 100 000 tirages × 4 ranges.
+- Le paquet est une liste d'ensembles à une carte ; le tirage du board ne fait plus que des
+  opérations de masques.
+- Les mains d'un tirage vivent dans un tableau fixe au lieu d'un `Vec`.
+
+**Mesures** (binaire release, meilleur de 15, 2 M tirages, avant = itération 3) :
+
+| Calcul                                  | 1 fil avant | 1 fil après | 4 cœurs avant | 4 cœurs après |
+| --------------------------------------- | ----------- | ----------- | ------------- | ------------- |
+| `AA,KK QQ,JJ TT,99`                     | 240,6 ms    | 194,8 ms    | 60,3 ms       | 51,1 ms       |
+| `22+,A2s+,KTo+ random QQ+,AK`           | 374,0 ms    | 238,4 ms    | 100,2 ms      | 67,5 ms       |
+| `AhKh QQ+,AKo:0.5,AQs:0.3 random`       | 403,3 ms    | 312,5 ms    | 109,7 ms      | 87,8 ms       |
+
+Instructions (1 fil, 400 000 tirages) : 462 M → 370 M.
+
+**Pistes suivantes.**
+
+- `strategy/src/mc.rs` : le Monte-Carlo propre à la stratégie et à l'entraînement des IA
+  (appelé à chaque décision simulée) mérite le même profilage.
+- `top::<N>` n'est pas toujours inliné : extraction des rangs déroulée.
+- `strategy/src/preflop.rs` : construction de la matrice préflop (temps, parallélisme).
