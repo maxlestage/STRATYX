@@ -34,6 +34,10 @@ repository = "https://github.com/maxlestage/stratyx"
 # Crates internes
 stratyx-shared = { path = "shared" }
 stratyx-poker = { path = "poker" }
+stratyx-strategy = { path = "strategy" }
+stratyx-analytics = { path = "analytics" }
+stratyx-ai-expresso = { path = "ai/expresso_3max" }
+stratyx-ai-tournament = { path = "ai/tournament_6max" }
 
 # Dépendances externes — toutes en Rust pur, auditées via `cargo deny check`.
 rand = { version = "0.9", default-features = false, features = ["std", "std_rng", "os_rng"] }

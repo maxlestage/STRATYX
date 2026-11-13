@@ -123,11 +123,11 @@ de `decisions.md`.
 |---|---|---|
 | 1 | Fondations Rust et moteur poker | **En cours** : moteur livré (voir ci-dessous) |
 | 2 | Capture vidéo et reconnaissance | À faire |
-| 3 | Retranscription automatique | Format pivot et validation par rejeu déjà livrés |
-| 4 | IA Expresso et IA Tournois | À faire |
-| 5 | Analyses et statistiques | À faire |
+| 3 | Retranscription automatique | Format pivot, validation par rejeu et import des historiques texte (PokerStars, Winamax) livrés |
+| 4 | IA Expresso et IA Tournois | **En cours** : première version livrée (voir ci-dessous) |
+| 5 | Analyses et statistiques | Analyse des mains livrée ; profils et statistiques à faire |
 | 6 | Coaching et simulations | À faire |
-| 7 | Interfaces et API | À faire |
+| 7 | Interfaces et API | Site web : PWA complète, page d'analyse `/app` (WebAssembly, hors ligne) |
 | 8 | Tests, sécurité et optimisation | Audit des dépendances et CI déjà en place |
 
 ### Phase 1 — livré
@@ -151,7 +151,30 @@ de `decisions.md`.
 
 ### Phase 1 — reste à faire
 
-- Import et export des historiques texte des salles visées (il faut des exemples réels).
+- Export des historiques texte des salles (l'import PokerStars et Winamax est livré :
+  `poker::import`).
 - Straddles, blindes mortes et blindes postées à l'arrivée (cash game).
 - Banc d'essai de performance (évaluations par seconde, équité par range).
-- Équilibres push/fold heads-up et 3-max (en préparation de la phase 4).
+
+### Phase 4 — livré (première version)
+
+- `strategy` : 169 classes et leur force, ranges probables des adversaires d'après leurs
+  actions, équité Monte-Carlo, **équilibres push/fold** à 3 et à 6 joueurs (jeu fictif sur
+  simulations, chip EV), **décision de référence** de chaque spot (push/fold ou EV),
+  caractéristiques des situations et modèles (softmax, perceptron multicouche) en Rust pur
+  (T10).
+- `ai/training` (`stratyx-train`) : simulateur d'auto-jeu (sit & go Expresso complets, tables
+  de tournoi 6-max), lecture des archives réelles (texte des salles, JSON), apprentissage
+  (Adam, validation sur des mains jamais vues), rapport [`entrainement.md`](entrainement.md).
+- `ai/expresso_3max`, `ai/tournament_6max` : les modèles entraînés de chaque IA (équilibre
+  push/fold, décision, décision linéaire, population), embarqués.
+- `analytics` : analyse d'une main après la partie, décision par décision, avec gravité, EV
+  perdue, avis des modèles, tendances de la population et pistes de travail ; `stratyx
+  analyse` et page `/app` du site.
+
+### Phase 4 — reste à faire
+
+- Archives réelles sous licence vérifiée (T11), en plus des simulations.
+- Postflop approfondi (solveur CFR sur arbres réduits), ICM dans les décisions de tournoi,
+  multiplicateurs Expresso.
+- Modèles plus lourds sur GPU avec Burn (D3).
