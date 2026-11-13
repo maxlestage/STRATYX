@@ -17,7 +17,9 @@ pub(crate) fn decode(s: &str) -> Option<Vec<u8>> {
         return None;
     }
     let nibble = |c: u8| char::from(c).to_digit(16).map(|d| d as u8);
-    s.chunks_exact(2)
+    s.as_chunks::<2>()
+        .0
+        .iter()
         .map(|p| Some((nibble(p[0])? << 4) | nibble(p[1])?))
         .collect()
 }

@@ -303,7 +303,9 @@ impl<'a> RgbaFrame<'a> {
             for y in y0..y1 {
                 let row = y as usize * self.stride;
                 self.data[row + start..row + end]
-                    .chunks_exact_mut(BYTES_PER_PIXEL)
+                    .as_chunks_mut::<BYTES_PER_PIXEL>()
+                    .0
+                    .iter_mut()
                     .for_each(|px| px.copy_from_slice(&fill.0));
             }
         }

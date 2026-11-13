@@ -143,8 +143,10 @@ pub fn detect_cards(frame: &Frame) -> Vec<DetectedCard> {
     let (w, h) = (work.width, work.height);
     let mask: Vec<bool> = work
         .rgba
-        .chunks_exact(4)
-        .map(|p| is_face([p[0], p[1], p[2], p[3]]))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|p| is_face(*p))
         .collect();
     let scale_x = frame.width as f32 / w as f32;
     let scale_y = frame.height as f32 / h as f32;

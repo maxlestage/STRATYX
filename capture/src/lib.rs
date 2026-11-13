@@ -164,7 +164,7 @@ pub fn bgrx_to_rgba(src: &[u8], width: u32, height: u32, stride: usize) -> Vec<u
     let mut out = Vec::with_capacity((width * height * 4) as usize);
     for y in 0..height as usize {
         let row = &src[y * stride..y * stride + width as usize * 4];
-        for px in row.chunks_exact(4) {
+        for px in row.as_chunks::<4>().0 {
             out.extend_from_slice(&[px[2], px[1], px[0], 255]);
         }
     }
