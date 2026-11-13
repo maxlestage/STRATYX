@@ -321,6 +321,14 @@ version = "0.1.0"
 [[package]]
 name = "stratyx-vision"
 version = "0.1.0"
+dependencies = [
+ "rand",
+ "rand_chacha",
+ "serde",
+ "serde_json",
+ "stratyx-poker",
+ "stratyx-shared",
+]
 
 [[package]]
 name = "syn"
