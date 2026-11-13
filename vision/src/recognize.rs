@@ -101,10 +101,14 @@ pub struct Recognized {
 }
 
 impl Recognized {
-    /// La confiance au format de la plateforme (décision T7).
+    /// La confiance au format de la plateforme (décision T7). Une confiance brute qui n'est
+    /// pas un nombre (`NaN`, seul cas hors de `[0, 1]` après le bornage) vaut 0 : une lecture
+    /// douteuse doit passer sous le seuil de vérification, jamais être déclarée certaine.
     #[must_use]
     pub fn confidence(&self) -> Confidence {
-        Confidence::new(self.confidence.clamp(0.0, 1.0)).unwrap_or(Confidence::CERTAIN)
+        Confidence::new(self.confidence.clamp(0.0, 1.0))
+            .or_else(|_| Confidence::new(0.0))
+            .expect("0 est une confiance valide")
     }
 }
 
