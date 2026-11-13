@@ -948,6 +948,7 @@ dependencies = [
  "serde_json",
  "stratyx-poker",
  "stratyx-shared",
+ "thiserror",
 ]
 
 [[package]]

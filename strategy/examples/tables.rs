@@ -1,6 +1,6 @@
 //! Recalcule `src/tables.rs` : `cargo run --release -p stratyx-strategy --example tables > strategy/src/tables.rs`.
 
-use stratyx_strategy::preflop::{CLASSES, class_at, compute_tables};
+use stratyx_strategy::classes::{CLASSES, class_at, compute_tables};
 
 fn main() {
     let samples: usize = std::env::args()
@@ -11,7 +11,7 @@ fn main() {
     println!(
         "//! Force des 169 classes de mains de départ : équité préflop contre 1, 2 et 5 mains"
     );
-    println!("//! au hasard, dans l'ordre de la grille (voir [`crate::preflop`]).");
+    println!("//! au hasard, dans l'ordre de la grille (voir [`crate::classes`]).");
     println!("//!");
     println!("//! Fichier généré par `cargo run --release -p stratyx-strategy --example tables`");
     println!("//! ({samples} tirages par classe, graine fixe) : ne pas modifier à la main.");

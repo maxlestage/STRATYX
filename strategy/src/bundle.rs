@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::charts::Chart;
 use crate::model::Classifier;
-use crate::pushfold::Chart;
 
 /// La mesure d'un modèle sur les exemples de validation (jamais vus à l'entraînement).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

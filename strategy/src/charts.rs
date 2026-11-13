@@ -21,7 +21,7 @@ use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use stratyx_poker::{CardSet, HoleCards, evaluate};
 
-use crate::preflop::{CLASSES, combos_of, draw, hole_class};
+use crate::classes::{CLASSES, combos_of, draw, hole_class};
 
 /// Situation d'un joueur dans un coup push/fold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -195,7 +195,7 @@ fn solve_depth(
     // Départ : tapis avec le top 30 %, call avec le top 15 % (8 % après un call).
     let start = |share: f32| -> Vec<f32> {
         (0..CLASSES)
-            .map(|c| f32::from(u8::from(crate::preflop::percentile(c) <= share)))
+            .map(|c| f32::from(u8::from(crate::classes::percentile(c) <= share)))
             .collect()
     };
     let mut s = Strategies {
@@ -558,7 +558,7 @@ pub fn spot_ev(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::preflop::class_index;
+    use crate::classes::class_index;
     use stratyx_poker::{HandClass, Rank};
 
     #[test]

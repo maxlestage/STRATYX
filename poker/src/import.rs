@@ -18,7 +18,7 @@ use thiserror::Error;
 use crate::card::{Card, parse_cards};
 use crate::format::{GameFormat, GameType};
 use crate::game::{Action, Ante, BettingStructure, Blinds};
-use crate::history::{HandEvent, HandRecord, SeatRecord};
+use crate::history::{HandEvent, HandMeta, HandRecord, SeatRecord};
 use crate::range::HoleCards;
 
 /// Salle d'origine d'un historique.
@@ -331,11 +331,17 @@ fn parse_hand(lines: &[String]) -> Result<ImportedHand, ImportError> {
 
     // Table, bouton, taille.
     let mut table_size: Option<u8> = None;
+    let mut table_name: Option<String> = None;
     let mut button: Option<u8> = None;
     let mut seats: Vec<RawSeat> = Vec::new();
     let mut body_start = lines.len();
     for (i, line) in lines.iter().enumerate().skip(1) {
         if line.starts_with("Table") {
+            table_name = line
+                .split('\'')
+                .nth(1)
+                .map(str::to_owned)
+                .filter(|t| !t.is_empty());
             if let Some(m) = line.find("-max") {
                 let digits: String = line[..m]
                     .chars()
@@ -511,6 +517,13 @@ fn parse_hand(lines: &[String]) -> Result<ImportedHand, ImportError> {
             })
             .collect(),
         events: events.into_iter().map(imported).collect(),
+        meta: HandMeta {
+            hero_seat: hero.map(|(i, _)| seats[i].seat),
+            site: Some(room.name().to_lowercase()),
+            table: table_name,
+            provenance: Some("historique importé".to_owned()),
+            ..HandMeta::default()
+        },
     };
     Ok(ImportedHand {
         record,

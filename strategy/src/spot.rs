@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use stratyx_poker::game::{ActionKind, PlayerStatus};
 use stratyx_poker::{Card, CardSet, HandCategory, HandState, HoleCards, Rank, Street, evaluate};
 
-use crate::preflop;
+use crate::classes;
 
 /// Les quatre familles de décision apprises par les modèles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -283,7 +283,7 @@ impl HandFeatures {
     /// `equity_random` est fournie par l'appelant (Monte-Carlo, voir [`crate::mc`]).
     #[must_use]
     pub fn new(hole: HoleCards, board: &[Card], opponents: usize, equity_random: f32) -> Self {
-        let class = preflop::hole_class(hole);
+        let class = classes::hole_class(hole);
         let [a, b] = hole.cards();
         let (hi, lo) = if a.rank() >= b.rank() {
             (a.rank(), b.rank())
@@ -292,8 +292,8 @@ impl HandFeatures {
         };
         let mut f = HandFeatures {
             class: class as u8,
-            percentile: preflop::percentile(class),
-            preflop_strength: preflop::strength(class, opponents.max(1)),
+            percentile: classes::percentile(class),
+            preflop_strength: classes::strength(class, opponents.max(1)),
             pair: hi == lo,
             suited: a.suit() == b.suit(),
             gap: (hi.index() - lo.index()).saturating_sub(1),

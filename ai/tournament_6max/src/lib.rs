@@ -33,8 +33,8 @@ pub fn models() -> &'static ModelBundle {
 mod tests {
     use super::*;
     use stratyx_poker::{HandClass, Rank};
-    use stratyx_strategy::preflop::class_index;
-    use stratyx_strategy::pushfold::Node;
+    use stratyx_strategy::charts::Node;
+    use stratyx_strategy::classes::class_index;
 
     #[test]
     fn models_load_and_make_sense() {

@@ -2,7 +2,7 @@
 //! charges, section 6).
 //!
 //! - Tapis courts au préflop, personne n'a misé avant (ou face à un tapis) : l'équilibre
-//!   push/fold du format ([`crate::pushfold`]).
+//!   push/fold du format ([`crate::charts`]).
 //! - Sinon, une **référence EV** : équité contre les ranges probables des adversaires
 //!   ([`crate::villain`]), cotes du pot, fold equity (modèle de population quand il est
 //!   fourni) et réalisation de l'équité selon la position. Toutes les EV sont en grosses
@@ -13,10 +13,10 @@ use stratyx_poker::game::{Action, PlayerStatus};
 use stratyx_poker::{HandState, HoleCards, Range, Street};
 use stratyx_shared::Chips;
 
+use crate::charts::{Chart, Node};
+use crate::classes;
 use crate::mc;
 use crate::model::Classifier;
-use crate::preflop;
-use crate::pushfold::{Chart, Node};
 use crate::spot::{Decision, Spot};
 use crate::villain;
 
@@ -142,7 +142,7 @@ pub fn reference(
     let me = &state.players()[player];
     let to_call = legal.call.map_or(0, Chips::get);
     let pot = state.pot_total().get();
-    let class = preflop::hole_class(hole);
+    let class = classes::hole_class(hole);
     let opponents: Vec<usize> = (0..state.players().len())
         .filter(|i| *i != player && state.players()[*i].status != PlayerStatus::Folded)
         .collect();
@@ -222,7 +222,7 @@ pub fn reference(
                 })
                 .map(|a| pre_rank(a.player))
                 .collect();
-            let (ev_in, ev_fold) = crate::pushfold::spot_ev(
+            let (ev_in, ev_fold) = crate::charts::spot_ev(
                 chart,
                 spot.effective_bb,
                 n,
@@ -364,12 +364,13 @@ pub fn reference(
             .filter(|t| *t < all_in_to)
             .unwrap_or_else(|| default_raise_to(state, &spot))
             .clamp(min.get(), max.get());
-        if target < all_in_to && (target as f32) < 0.7 * all_in_to as f32 {
-            if let Some((v, fe)) = evaluate_aggression(target, false) {
-                ev[Decision::Raise.index()] = Some(v);
-                fold_equity = fe;
-                raise_to = Some(target);
-            }
+        if target < all_in_to
+            && (target as f32) < 0.7 * all_in_to as f32
+            && let Some((v, fe)) = evaluate_aggression(target, false)
+        {
+            ev[Decision::Raise.index()] = Some(v);
+            fold_equity = fe;
+            raise_to = Some(target);
         }
     }
     if all_in_to > state.current_bet().get()

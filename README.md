@@ -25,7 +25,8 @@ tournois, sit & go et Expresso.
   session, `stratyx analyse` et la page `/app` du site.
 - La vision (`vision`) lit les cartes de captures d'écran et de vidéos, après la partie : sur
   `/app`, filmez votre écran, puis analysez chaque spot (décision T13).
-- Les autres crates sont des squelettes qui matérialisent l'architecture.
+- Base locale (`database`), sécurité (`security`) et capture d'écran native (`capture`) sont
+  livrées ; les autres crates sont des squelettes qui matérialisent l'architecture.
 
 ## Démarrer
 
@@ -52,17 +53,19 @@ cargo run --release -p stratyx-ai-training --bin stratyx-train -- --archives arc
 | `shared` | jetons, confiance, provenance des données | 1 ✅ |
 | `poker` | moteur Texas Hold'em : cartes, évaluation, ranges, équité, règles NL/PL/FL, formats, pots, historiques, import des historiques texte, ICM | 1 ✅ |
 | `tools/cli` | outil `stratyx` (dont `stratyx analyse`) | 1 ✅ |
-| `strategy` | 169 classes, ranges adverses, équilibres push/fold, référence EV, modèles en Rust pur | 4 ✅ |
+| `strategy` | matrice préflop 169 × 169, push/fold Nash (tête-à-tête, 3-max en chipEV ou ICM, tables 3 et 6 joueurs), solveur de river CFR+, ranges adverses, référence EV, modèles en Rust pur | 4 ✅ |
 | `ai/training` | `stratyx-train` : simulations, archives, apprentissage, rapport | 4 ✅ |
 | `ai/expresso_3max`, `ai/tournament_6max` | les modèles entraînés de chaque IA, embarqués | 4 ✅ |
-| `analytics` | analyse des mains après la partie (profils et statistiques à venir) | 5 🟡 |
+| `analytics` | profils (VPIP, PFR, 3-bet, c-bet, AF, WTSD… avec fiabilité), résultats, tournois, fuites, revue main par main face aux IA, bilan de session, analyse de spot | 5 ✅ |
 | `vision` | détection et reconnaissance des cartes (calibration par salle, confiance), images clés | 2 🟡 |
-| `capture`, `video` | capture native, vidéo | 2 |
-| `database` | quatre bases : Expresso, Tournois, Stratégie, Utilisateurs | 3 |
+| `capture` | capture d'écran native : X11 en Rust pur, Windows GDI (macOS et Wayland à venir) | 2 🟡 |
+| `video` | import, décodage, enregistrement | 2 |
+| `transcription` | états de table observés → historiques validés (contrats communs) | 3 |
+| `database` | base locale redb en cinq espaces, déduplication, ingestion d'archives (D5), RGPD, import et export PokerStars | 3 ✅ |
 | `ai/inference` | exécution des modèles lourds sur CPU ou GPU (Burn) | 4 |
 | `coaching` | exercices, quiz, parcours | 6 |
 | `apps/*` | bureau, mobile, serveur et API | 7 |
-| `security` | chiffrement, authentification, RGPD | 8 |
+| `security` | chiffrement au repos (XChaCha20-Poly1305, Argon2id), authentification, consentement de capture et verrou D6, RGPD, masquage, sauvegardes | 8 ✅ |
 | `site` | site web en Rust (Paquets, WebAssembly), PWA complète, dessins en Canvas 2D, démos du moteur et page d'analyse `/app` : voir [`site/README.md`](site/README.md) | — |
 
 ## Déployer le site depuis son téléphone (Heroku)

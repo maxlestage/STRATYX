@@ -1,0 +1,51 @@
+PokerStars Hand #254380021654: Tournament #3812345678, $1.40+$0.10 USD Hold'em No Limit - Level V (50/100) - 2024/12/01 21:20:11 CET [2024/12/01 15:20:11 ET]
+Table '3812345678 12' 9-max Seat #2 is the button
+Seat 1: ShortyMcShort (480 in chips)
+Seat 2: BigStackBob (9120 in chips)
+Seat 3: HeroStx (2650 in chips)
+Seat 4: Kat_Ostrova (1300 in chips)
+Seat 5: rivertrash (5400 in chips) is sitting out
+Seat 6: Pocket_Rockets77 (3875 in chips)
+Seat 8: Gr1nder (2210 in chips)
+ShortyMcShort: posts the ante 10
+BigStackBob: posts the ante 10
+HeroStx: posts the ante 10
+Kat_Ostrova: posts the ante 10
+rivertrash: posts the ante 10
+Pocket_Rockets77: posts the ante 10
+Gr1nder: posts the ante 10
+HeroStx: posts small blind 50
+Kat_Ostrova: posts big blind 100
+*** HOLE CARDS ***
+Dealt to HeroStx [7s 7h]
+rivertrash: folds
+Pocket_Rockets77: raises 150 to 250
+Gr1nder: folds
+ShortyMcShort: raises 220 to 470 and is all-in
+BigStackBob: calls 470
+HeroStx: raises 2170 to 2640 and is all-in
+Kat_Ostrova: calls 1190 and is all-in
+Pocket_Rockets77: folds
+Gr1nder said, "gl all"
+BigStackBob: calls 2170
+*** FLOP *** [2c 9d Jh]
+*** TURN *** [2c 9d Jh] [4s]
+*** RIVER *** [2c 9d Jh 4s] [8h]
+*** SHOW DOWN ***
+BigStackBob: shows [Ac Kc] (high card Ace)
+HeroStx: shows [7s 7h] (a pair of Sevens)
+Kat_Ostrova: shows [Qd Qs] (a pair of Queens)
+ShortyMcShort: shows [Ah Ad] (a pair of Aces)
+HeroStx collected 2700 from side pot-2
+Kat_Ostrova collected 2460 from side pot-1
+ShortyMcShort collected 2200 from main pot
+*** SUMMARY ***
+Total pot 7360 Main pot 2200. Side pot-1 2460. Side pot-2 2700. | Rake 0
+Board [2c 9d Jh 4s 8h]
+Seat 1: ShortyMcShort showed [Ah Ad] and won (2200) with a pair of Aces
+Seat 2: BigStackBob (button) showed [Ac Kc] and lost with high card Ace
+Seat 3: HeroStx (small blind) showed [7s 7h] and won (2700) with a pair of Sevens
+Seat 4: Kat_Ostrova (big blind) showed [Qd Qs] and won (2460) with a pair of Queens
+Seat 5: rivertrash folded before Flop (didn't bet)
+Seat 6: Pocket_Rockets77 folded before Flop
+Seat 8: Gr1nder folded before Flop (didn't bet)

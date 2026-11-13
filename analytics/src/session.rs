@@ -551,7 +551,7 @@ mod tests {
     fn a_session_report() {
         let text = format!(
             "{SAMPLE_POKERSTARS}\n\n{SAMPLE_WINAMAX}\n\n{}",
-            crate::tests::BAD_CALL
+            crate::review::tests::BAD_CALL
         );
         let r = import_text(&text);
         assert_eq!(r.hands.len(), 3);

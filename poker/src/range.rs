@@ -375,10 +375,10 @@ fn classes_for(hi: Rank, lo: Rank, suit: Suitedness) -> Vec<HandClass> {
 
 fn expand_token(body: &str) -> Result<Vec<Item>, String> {
     // Combinaison précise : « AsKd ».
-    if body.len() == 4 {
-        if let Ok(h) = body.parse::<HoleCards>() {
-            return Ok(vec![Item::Combo(h)]);
-        }
+    if body.len() == 4
+        && let Ok(h) = body.parse::<HoleCards>()
+    {
+        return Ok(vec![Item::Combo(h)]);
     }
     let classes = if let Some(base) = body.strip_suffix('+') {
         let (hi, lo, suit) = parse_pattern(base)?;

@@ -9,3 +9,6 @@
 
 # Archives de mains (simulées ou réelles) : jamais versionnées.
 /archives
+
+# Dossiers locaux des outils de développement.
+/.claude/

@@ -9,8 +9,8 @@
 use stratyx_poker::game::{ActionKind, AppliedAction};
 use stratyx_poker::{Card, CardSet, HandState, HoleCards, Range, Street, evaluate};
 
-use crate::preflop::{self, CLASSES, class_at};
-use crate::pushfold::{Chart, Node};
+use crate::charts::{Chart, Node};
+use crate::classes::{self, CLASSES, class_at};
 
 /// Part des mains ouvertes en premier de parole, selon les joueurs qui restent derrière.
 #[must_use]
@@ -44,8 +44,8 @@ fn classes_to_range(w: &[f32; CLASSES]) -> Range {
 fn band(from: f32, to: f32) -> [f32; CLASSES] {
     let mut w = [0.0f32; CLASSES];
     let mut lo = 0.0f32;
-    for &c in preflop::order() {
-        let hi = preflop::percentile(c);
+    for &c in classes::order() {
+        let hi = classes::percentile(c);
         let overlap = (hi.min(to) - lo.max(from)).max(0.0);
         if overlap > 0.0 {
             w[c] = (overlap / (hi - lo).max(1e-9)).min(1.0);
@@ -248,7 +248,7 @@ pub fn continuing(range: &Range, board: &[Card], keep: f32) -> Range {
     let mut combos: Vec<(HoleCards, f32, f32)> = range
         .iter()
         .filter(|(_, w)| *w > 0.0)
-        .map(|(h, w)| (h, w, preflop::score(preflop::hole_class(h))))
+        .map(|(h, w)| (h, w, classes::score(classes::hole_class(h))))
         .collect();
     combos.sort_by(|a, b| b.2.total_cmp(&a.2));
     let total: f32 = combos.iter().map(|c| c.1).sum::<f32>().max(1e-9);

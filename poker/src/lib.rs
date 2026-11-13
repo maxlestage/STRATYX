@@ -13,6 +13,7 @@
 //! | [`icm`]     | équité ICM (Malmuth-Harville)                                           |
 //! | [`import`]  | import des historiques texte des salles (PokerStars, Winamax…)          |
 //! | [`odds`]    | cotes du pot, fold equity, EV, MDF                                      |
+//! | [`session`] | sessions, résultats de tournois (ROI, ITM)                             |
 //! | [`position`]| positions du tête-à-tête à la table pleine (2 à 10 joueurs)           |
 //!
 //! Variante prise en charge : **Texas Hold'em** sous toutes ses formes — no-limit, pot-limit
@@ -31,10 +32,13 @@ pub mod odds;
 pub mod position;
 pub mod pot;
 pub mod range;
+pub mod session;
 
 pub use card::{Card, Rank, Suit};
 pub use cardset::CardSet;
 pub use eval::{HandCategory, HandRank, evaluate};
 pub use format::{GameFormat, GameType, Specialist};
 pub use game::{Action, BettingStructure, Blinds, HandSetup, HandState, Street};
+pub use history::{HandEvent, HandMeta, HandRecord, SeatRecord};
 pub use range::{HandClass, HoleCards, Range};
+pub use session::{Session, SessionSource, TournamentResult};
