@@ -442,12 +442,37 @@ fn parse_hand(chunk: &Chunk<'_>, options: &ImportOptions) -> Result<ImportedHand
         .ok_or_else(|| fail(header_line, K::Missing("ligne « Table »")))?;
     let table = parse_table(table_text).map_err(|k| fail(table_line, k))?;
 
+    // PokerStars liste les sièges dans l'ordre, de 1 à la taille de la table : un numéro hors
+    // de la table, en double ou dans le désordre trahit un fichier abîmé (« Seat 91 » à une
+    // table 6-max était accepté, et l'ordre des sièges changeait à l'aller-retour).
+    let last_seat = table.size.unwrap_or(10);
     let mut seats: Vec<SeatLine> = Vec::new();
     while let Some(&(n, l)) = lines.peek() {
         if !(l.starts_with("Seat ") && l.contains(" in chips")) {
             break;
         }
-        seats.push(parse_seat(l, header.money).map_err(|k| fail(n, k))?);
+        let seat = parse_seat(l, header.money).map_err(|k| fail(n, k))?;
+        if !(1..=last_seat).contains(&seat.seat) {
+            return Err(fail(
+                n,
+                K::Inconsistent(format!(
+                    "siège {} hors de la table (1 à {last_seat})",
+                    seat.seat
+                )),
+            ));
+        }
+        if let Some(prev) = seats.last()
+            && seat.seat <= prev.seat
+        {
+            return Err(fail(
+                n,
+                K::Inconsistent(format!(
+                    "siège {} après le siège {} (sièges en double ou dans le désordre)",
+                    seat.seat, prev.seat
+                )),
+            ));
+        }
+        seats.push(seat);
         lines.next();
     }
     if seats.is_empty() {

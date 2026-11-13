@@ -520,6 +520,8 @@ version = "0.1.0"
 name = "stratyx-database"
 version = "0.1.0"
 dependencies = [
+ "rand",
+ "rand_chacha",
  "redb",
  "serde",
  "serde_json",

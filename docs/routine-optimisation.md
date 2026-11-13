@@ -248,3 +248,29 @@ passent sans panique.
   (`database/src/text/pokerstars_import.rs`, 978 lignes), avec ses trois fichiers réels de
   `database/tests/data/`.
 - Site : poids du bundle WebAssembly, temps de premier affichage de `/app`.
+
+## 2026-11-13 — Itération 8 : import PokerStars de la base, sièges incohérents acceptés
+
+**Démarche.** Nouveau test `database/tests/import_robustesse.rs`, sur le modèle de
+l'itération 7, pour l'importeur PokerStars de la base locale
+(`database/src/text/pokerstars_import.rs`) à partir des trois fichiers réels de
+`database/tests/data/` : troncatures, lignes supprimées ou doublées, 3 000 corruptions
+aléatoires. En plus de l'absence de panique, il vérifie un **invariant d'aller-retour** :
+toute main acceptée malgré la corruption, exportée au format PokerStars puis relue, redonne
+exactement la même main.
+
+**Trouvé.** Aucune panique (200 000 corruptions en local), mais une incohérence : une
+corruption de `Seat 1:` en `Seat 91:` à une table 6-max était **acceptée** ; l'export
+réécrivant les sièges dans l'ordre, la main relue n'était plus la même.
+
+**Correction.** À la lecture des sièges, le numéro doit être compris entre 1 et la taille de
+la table (`6-max`, 10 sinon) et strictement croissant (PokerStars liste toujours les sièges
+dans l'ordre) : un siège hors de la table, en double ou dans le désordre donne une erreur
+localisée (`Inconsistent`, avec la ligne). Test de régression (sièges 91, 0 et 7 à une table
+6-max, deux sièges inversés), qui échoue sans le correctif. Après correction, 200 000
+corruptions passent, aller-retour compris.
+
+**Pistes suivantes.**
+
+- Même invariant d'aller-retour pour `poker::import` (Winamax) si un export Winamax existe.
+- Site : poids du bundle WebAssembly, temps de premier affichage de `/app`.
