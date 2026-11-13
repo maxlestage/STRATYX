@@ -1,6 +1,6 @@
 [package]
 name = "stratyx-cli"
-description = "Outil en ligne de commande pour le moteur poker : évaluation, équité, ranges, ICM."
+description = "Outil en ligne de commande : évaluation, équité, ranges, ICM et analyse des mains après la partie."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,6 +13,8 @@ path = "src/main.rs"
 [dependencies]
 stratyx-poker.workspace = true
 stratyx-shared.workspace = true
+stratyx-analytics.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

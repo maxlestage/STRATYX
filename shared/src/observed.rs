@@ -65,6 +65,9 @@ pub enum Source {
     /// Déduite par le moteur à partir d'autres données observées
     /// (ex. : montant d'un call). Jamais utilisé pour des cartes privées.
     Derived,
+    /// Produite par le simulateur (auto-jeu dans le moteur de règles), pour l'entraînement
+    /// des IA. Jamais mélangée aux mains réelles d'un utilisateur.
+    Simulation,
 }
 
 /// Valeur observée, accompagnée de sa provenance, de sa confiance et de sa position

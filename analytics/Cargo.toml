@@ -1,12 +1,19 @@
 [package]
 name = "stratyx-analytics"
-description = "Analyse des mains (EV, équité, erreurs), profils adversaires et statistiques personnelles."
+description = "Analyse des mains après la partie : chaque décision comparée à la référence (équilibre push/fold, EV), avec les modèles des IA spécialisées."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+stratyx-poker.workspace = true
+stratyx-shared.workspace = true
+stratyx-strategy.workspace = true
+stratyx-ai-expresso.workspace = true
+stratyx-ai-tournament.workspace = true
+serde.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

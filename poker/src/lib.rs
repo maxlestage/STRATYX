@@ -11,6 +11,7 @@
 //! | [`pot`]     | pots principal/secondaires, mises non suivies, répartition             |
 //! | [`history`] | historique de main avec provenance et confiance, validation par rejeu  |
 //! | [`icm`]     | équité ICM (Malmuth-Harville)                                           |
+//! | [`import`]  | import des historiques texte des salles (PokerStars, Winamax…)          |
 //! | [`odds`]    | cotes du pot, fold equity, EV, MDF                                      |
 //! | [`position`]| positions du tête-à-tête à la table pleine (2 à 10 joueurs)           |
 //!
@@ -25,6 +26,7 @@ pub mod format;
 pub mod game;
 pub mod history;
 pub mod icm;
+pub mod import;
 pub mod odds;
 pub mod position;
 pub mod pot;

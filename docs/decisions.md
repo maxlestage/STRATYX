@@ -5,7 +5,7 @@ ajoute une nouvelle qui la remplace (« remplace Dx »).
 
 - **D1 à D8** : décisions de cadrage du cahier des charges, **validées le 2026-11-04**
   (D8 remplace D4).
-- **T1 à T9** : décisions techniques qui en découlent. « Acceptée » : déjà appliquée dans
+- **T1 à T12** : décisions techniques qui en découlent. « Acceptée » : déjà appliquée dans
   le code. « Proposée » : à confirmer au début de la phase indiquée.
 
 ---
@@ -209,6 +209,49 @@ comparables d'une version à l'autre.
 Identifiants en anglais, conformément à l'écosystème Rust. Documentation, messages d'erreur et
 textes affichés en français. Montants en entiers (`Chips`), jamais en flottants. Toute donnée
 issue de la vision porte sa provenance et sa confiance.
+
+### T10 — Premiers modèles des IA en Rust pur, sans Burn — *acceptée*
+
+**Choix.** Les modèles de la première version des deux IA (régression softmax et perceptron
+multicouche de quelques milliers de paramètres) sont écrits, entraînés et exécutés en Rust
+pur (`strategy::model`, `ai/training`), sur CPU. Burn reste retenu (D3) pour les modèles
+lourds : vision (phase 2) et modèles postflop profonds.
+
+**Pourquoi.** Ces modèles doivent tourner partout, y compris dans le navigateur (page `/app`
+du site, en WebAssembly, hors ligne) : quelques milliers de multiplications ne justifient ni
+la taille ni le temps de compilation de Burn. Le format des poids est un JSON simple et
+versionné, embarqué dans les crates `ai/expresso_3max` et `ai/tournament_6max`. Aucune
+dépendance nouvelle : l'audit `cargo deny` est inchangé.
+
+### T11 — Données d'entraînement : simulations d'abord, archives réelles en option — *acceptée*
+
+**Choix.** Faute d'archives sous licence vérifiée, les modèles sont entraînés sur des
+**archives simulées** : auto-jeu dans le moteur de règles entre six profils de joueurs (serré,
+régulier, large agressif, calling station, maniaque, équilibre), sit & go complets à 3 pour
+l'Expresso, mains de table de tournoi 6-max (tapis de 4 à 80 BB, ante de 12,5 %). Les mains
+simulées portent la provenance `Source::Simulation` et ne sont jamais mélangées aux mains
+d'un utilisateur. Les archives réelles de l'utilisateur (historiques texte PokerStars et
+Winamax, JSON `HandRecord`) s'ajoutent avec `stratyx-train --archives <dossier>` : nettoyées,
+dédupliquées, validées par rejeu (D5).
+
+**Étiquettes.** Le modèle de population apprend l'action jouée (tendances réelles des joueurs,
+jeu exploitant). Le modèle de décision apprend la **décision de référence** : équilibre
+push/fold (jeu fictif, chip EV) pour les tapis courts au préflop, sinon une référence EV
+(équité contre les ranges déduites des actions, cotes du pot, fold equity tirée du modèle de
+population, réalisation de l'équité selon la position, valeur des tours suivants). Elle est
+indépendante du résultat des mains (cahier des charges, section 6). Rapport :
+[`entrainement.md`](entrainement.md).
+
+### T12 — Historiques partagés : ils restent sur l'appareil — *acceptée*
+
+**Choix.** La page `/app` analyse les mains dans le navigateur (WebAssembly). Un historique
+partagé vers l'application installée (`share_target` du manifeste, `/app?texte=…`) ou passé
+dans un lien (`/app#texte=…`) n'est jamais envoyé au serveur : le service worker sert la page
+`/app` sans son adresse complète, et l'îlot lit le texte localement.
+
+**Pourquoi.** Les pseudonymes des adversaires sont des données personnelles (point de
+vigilance 3) ; le pare-feu applicatif du serveur refuserait aussi ces adresses. Le site
+reste utilisable hors ligne.
 
 ---
 
