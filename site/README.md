@@ -125,6 +125,42 @@ bouton *Deploy to Heroku*, buildpack emk/rust (`RustConfig` à la racine lance
 branches. Quand tout est vert, la branche est fusionnée dans `master` (sauf `wip/...`) et le
 site est déployé sur Heroku.
 
+## Base de données (liste d'attente, messages de contact)
+
+Le serveur garde les inscriptions à la liste d'attente (`Inscrit`) et les messages de contact
+(`Message`) dans la base « Mémoire » de Paquets, choisie par `DATABASE_URL` :
+
+| `DATABASE_URL` | Base | Usage |
+|---|---|---|
+| *(absente)* | en mémoire, vidée à chaque arrêt | développement, tests |
+| `postgres://…?sslmode=require` | PostgreSQL, en TLS | production |
+
+Les tables sont créées au démarrage (`app.model::<…>()`). Sur Heroku, le disque est effacé à
+chaque redémarrage (au moins une fois par jour, et à chaque déploiement) : sans PostgreSQL,
+la liste d'attente et les messages sont perdus.
+
+**Gratuitement, avec Neon** (PostgreSQL gratuit sans limite de durée, 0,5 Go, sans carte
+bancaire) :
+
+1. Créer un compte sur [neon.tech](https://neon.tech), puis un projet (région proche de
+   celle de l'app Heroku : `us-east` pour `us`, `eu-central` pour `eu`).
+2. *Connect* → copier la chaîne de connexion
+   (`postgresql://utilisateur:mot-de-passe@ep-….neon.tech/neondb?sslmode=require`).
+3. Dans le dépôt GitHub : *Settings → Secrets and variables → Actions → New repository
+   secret*, nom `DATABASE_URL`, valeur : la chaîne copiée.
+4. Relancer le déploiement (*Actions → Déploiement Heroku → Run workflow*) : il transmet
+   l'adresse à Heroku, et le serveur affiche `database: postgres` au démarrage.
+
+Ne pas ajouter Heroku Postgres (payant) : le secret suffit. La base Neon s'endort après
+quelques minutes sans requête et se réveille à la suivante (moins d'une seconde) ; c'est
+invisible pour un formulaire.
+
+Pour essayer en local : `DATABASE_URL='postgres://…' cargo run`.
+
+**Dépendances.** Le TLS de PostgreSQL passe par rustls avec `ring` (C et assembleur) : c'est
+une exception propre au serveur du site, hors de l'audit `cargo deny` du produit (règle
+100 % Rust du workspace). Pas de SQLite (bibliothèque C), pas d'autre moteur.
+
 ## Copie statique (GitHub Pages, à la main)
 
 `.github/workflows/pages.yml` ne se lance plus qu'à la main (*Actions → Site (GitHub Pages) →
