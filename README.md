@@ -21,8 +21,10 @@ tournois, sit & go et Expresso.
 - Les deux IA existent en première version (phase 4) : équilibres push/fold, modèle de
   décision et modèle de population, entraînés en Rust pur (voir
   [`docs/entrainement.md`](docs/entrainement.md)).
-- L'analyse des mains après la partie (`analytics`) est livrée : `stratyx analyse` et la page
-  `/app` du site.
+- L'analyse des mains après la partie (`analytics`) est livrée : main par main et bilan de
+  session, `stratyx analyse` et la page `/app` du site.
+- La vision (`vision`) lit les cartes de captures d'écran et de vidéos, après la partie : sur
+  `/app`, filmez votre écran, puis analysez chaque spot (décision T13).
 - Les autres crates sont des squelettes qui matérialisent l'architecture.
 
 ## Démarrer
@@ -54,7 +56,8 @@ cargo run --release -p stratyx-ai-training --bin stratyx-train -- --archives arc
 | `ai/training` | `stratyx-train` : simulations, archives, apprentissage, rapport | 4 ✅ |
 | `ai/expresso_3max`, `ai/tournament_6max` | les modèles entraînés de chaque IA, embarqués | 4 ✅ |
 | `analytics` | analyse des mains après la partie (profils et statistiques à venir) | 5 🟡 |
-| `capture`, `video`, `vision` | capture d'écran, vidéo, reconnaissance | 2 |
+| `vision` | détection et reconnaissance des cartes (calibration par salle, confiance), images clés | 2 🟡 |
+| `capture`, `video` | capture native, vidéo | 2 |
 | `database` | quatre bases : Expresso, Tournois, Stratégie, Utilisateurs | 3 |
 | `ai/inference` | exécution des modèles lourds sur CPU ou GPU (Burn) | 4 |
 | `coaching` | exercices, quiz, parcours | 6 |

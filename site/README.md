@@ -23,6 +23,12 @@ modèle de décision, tendances de la population, EV perdue, gravité, pistes de
 tourne en WebAssembly : rien n'est envoyé au serveur, et la page marche hors ligne (le
 service worker sert `/app` sans l'adresse complète d'un partage, voir la décision T12).
 
+La section **Vidéo et captures** filme l'écran ou la caméra, ou lit une vidéo ou des captures
+choisies sur l'appareil. Pendant l'enregistrement, rien n'est lu ni conseillé ; à l'arrêt, les
+cartes sont reconnues (calibration en touchant les cartes douteuses, gardée dans le
+navigateur) et chaque image devient un spot à analyser (décision T13). Seule `/app` ouvre la
+caméra et la capture d'écran dans ses en-têtes.
+
 
 Les textes viennent du cahier des charges et des décisions (`../docs/`) : rien d'inventé.
 Les mentions légales attendent les informations de l'éditeur (`src/contenu.rs`).
@@ -31,7 +37,8 @@ Les mentions légales attendent les informations de l'éditeur (`src/contenu.rs`
 
 | Îlot | Ce qu'il fait | Moteur |
 |---|---|---|
-| `analyse` | Analyse d'une main collée, importée ou partagée : rejeu, référence, modèles des IA | `stratyx-analytics` |
+| `analyse` | Analyse d'une main collée, importée ou partagée, et bilan de toute la session | `stratyx-analytics` |
+| `capture` | Filmer l'écran ou la caméra, importer une vidéo ou des captures ; à l'arrêt, cartes reconnues, calibration, analyse de chaque spot | `stratyx-vision`, `analytics::spot` |
 | `table2d` | Table vue de dessus en 2D (3, 6 ou 9 joueurs), main distribuée, flop/turn/river, évaluation et équité contre une main au hasard | `best_five`, `equity` |
 | `equite` | Équité de 2 ou 3 mains ou ranges, board facultatif, exact ou Monte-Carlo | `Range::parse`, `equity` |
 | `grille` | Grille des 169 mains, colorée en direct depuis une range | `Range`, `HandClass` |
@@ -68,7 +75,8 @@ Les captures d'écran du manifeste (`public/screenshots/`) et les icônes des ra
 | `src/main.rs` | Le serveur : mise en page, pages, liste d'attente, contact, PWA, sitemap |
 | `src/contenu.rs` | Tous les textes |
 | `src/lib.rs` | Les îlots (serveur et navigateur) et leurs calculs |
-| `src/analyse.rs` | L'îlot de la page Analyse (`/app`) |
+| `src/analyse.rs` | L'îlot de la page Analyse (`/app`) : historiques et bilan de session |
+| `src/capture.rs`, `src/media.rs` | Vidéo et captures : enregistrement, import, revue, spots |
 | `src/scenes.rs` | Les scènes 2D en Canvas 2D (navigateur) |
 | `src/anim.rs` | La boucle d'animation (`requestAnimationFrame`) |
 | `src/pwa.rs` | La PWA : manifeste, service worker, balises du `<head>` |

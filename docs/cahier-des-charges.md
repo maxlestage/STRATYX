@@ -122,7 +122,7 @@ de `decisions.md`.
 | Phase | Contenu | Statut |
 |---|---|---|
 | 1 | Fondations Rust et moteur poker | **En cours** : moteur livré (voir ci-dessous) |
-| 2 | Capture vidéo et reconnaissance | À faire |
+| 2 | Capture vidéo et reconnaissance | **Commencée** : capture dans le navigateur et reconnaissance des cartes (T13) |
 | 3 | Retranscription automatique | Format pivot, validation par rejeu et import des historiques texte (PokerStars, Winamax) livrés |
 | 4 | IA Expresso et IA Tournois | **En cours** : première version livrée (voir ci-dessous) |
 | 5 | Analyses et statistiques | Analyse des mains livrée ; profils et statistiques à faire |
@@ -171,6 +171,17 @@ de `decisions.md`.
 - `analytics` : analyse d'une main après la partie, décision par décision, avec gravité, EV
   perdue, avis des modèles, tendances de la population et pistes de travail ; `stratyx
   analyse` et page `/app` du site.
+
+### Phase 2 — livré (dans le navigateur)
+
+- `vision` : détection des cartes face visible (fond quelconque, cartes qui se chevauchent,
+  dos ignorés), main et board, lecture des coins, reconnaissance par modèles appris de la
+  salle (calibration), confiance, images clés d'une vidéo. Rust pur, en WebAssembly.
+- Page `/app` : filmer l'écran ou avec la caméra, importer une vidéo ou des captures ; à
+  l'arrêt seulement, revue des cartes, correction, et analyse de chaque spot
+  (`analytics::spot`).
+- `analytics::session` : bilan d'une session d'historiques (statistiques et repères, fuites
+  classées par EV perdue, décisions les plus coûteuses, priorités).
 
 ### Phase 4 — reste à faire
 

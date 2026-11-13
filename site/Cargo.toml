@@ -22,6 +22,7 @@ stratyx-poker = { path = "../poker" }
 stratyx-shared = { path = "../shared" }
 stratyx-strategy = { path = "../strategy" }
 stratyx-analytics = { path = "../analytics" }
+stratyx-vision = { path = "../vision" }
 
 # Serveur : Paquets sans SQLite ni PostgreSQL (aucune bibliothèque C) ; base en mémoire.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -37,12 +38,12 @@ js-sys = "0.3"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 web-sys = { version = "0.3", features = [
   "AddEventListenerOptions", "Blob", "CanvasGradient", "CanvasRenderingContext2d", "CssStyleDeclaration",
-  "Document", "DomRect", "File", "FileList", "FileReader", "DomTokenList", "Element", "Event", "EventTarget", "HtmlCanvasElement",
-  "HtmlElement", "HtmlInputElement", "IntersectionObserver", "IntersectionObserverEntry", "IntersectionObserverInit",
-  "KeyboardEvent", "Location", "MediaQueryList", "MouseEvent", "MutationObserver",
+  "DisplayMediaStreamConstraints", "Document", "DomRect", "File", "FileList", "FileReader", "DomTokenList", "Element", "Event", "EventTarget", "HtmlCanvasElement",
+  "HtmlElement", "HtmlImageElement", "HtmlInputElement", "HtmlMediaElement", "HtmlVideoElement", "ImageData", "IntersectionObserver", "IntersectionObserverEntry", "IntersectionObserverInit",
+  "KeyboardEvent", "Location", "MediaDevices", "MediaStream", "MediaStreamConstraints", "MediaStreamTrack", "MediaQueryList", "MouseEvent", "MutationObserver",
   "MutationObserverInit", "Navigator", "NodeList", "Performance", "PointerEvent",
   "ScrollBehavior", "ScrollToOptions", "ServiceWorker", "ServiceWorkerContainer",
-  "ServiceWorkerRegistration", "ServiceWorkerState", "UrlSearchParams", "VisibilityState", "Window",
+  "ServiceWorkerRegistration", "ServiceWorkerState", "Storage", "Url", "UrlSearchParams", "VisibilityState", "Window",
 ] }
 
 [dev-dependencies]

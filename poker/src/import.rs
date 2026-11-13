@@ -475,8 +475,9 @@ fn parse_hand(lines: &[String]) -> Result<ImportedHand, ImportError> {
 
     let n = seats.len() as u8;
     let size = table_size.unwrap_or(n).max(n).clamp(2, 10);
-    // Les sit & go à 3 de Winamax sont des Expresso, même quand l'en-tête ne le dit pas.
-    let game_type = if size <= 3 && (expresso || (tournament && room == Room::Winamax)) {
+    // Les tournois à 3 (Expresso Winamax, Spin & Go PokerStars…) relèvent de l'IA Expresso,
+    // même quand l'en-tête ne le dit pas.
+    let game_type = if size <= 3 && (expresso || tournament) {
         GameType::Expresso
     } else if tournament {
         GameType::Tournament

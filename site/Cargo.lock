@@ -931,6 +931,7 @@ dependencies = [
  "stratyx-poker",
  "stratyx-shared",
  "stratyx-strategy",
+ "stratyx-vision",
  "tokio",
  "wasm-bindgen",
  "web-sys",
@@ -945,6 +946,15 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "stratyx-poker",
+ "stratyx-shared",
+]
+
+[[package]]
+name = "stratyx-vision"
+version = "0.1.0"
+dependencies = [
+ "serde",
  "stratyx-poker",
  "stratyx-shared",
 ]

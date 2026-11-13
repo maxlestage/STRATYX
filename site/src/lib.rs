@@ -14,15 +14,19 @@ use stratyx_shared::Chips;
 pub mod analyse;
 #[cfg(target_arch = "wasm32")]
 mod anim;
+pub mod capture;
+#[cfg(target_arch = "wasm32")]
+mod media;
 #[cfg(target_arch = "wasm32")]
 mod mouvement;
 #[cfg(target_arch = "wasm32")]
 mod scenes;
 
 /// Les îlots, sous le nom donné à `island(...)`.
-pub const ISLANDS: [(&str, paquets::active::IslandFn); 8] = [
+pub const ISLANDS: [(&str, paquets::active::IslandFn); 9] = [
     ("mouvement", mouvement),
     ("analyse", analyse::analyse),
+    ("capture", capture::capture),
     ("hero2d", hero2d),
     ("table2d", table2d),
     ("equite", equite),

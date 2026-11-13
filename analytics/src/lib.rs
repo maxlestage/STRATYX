@@ -21,6 +21,9 @@ use stratyx_strategy::{
 };
 use thiserror::Error;
 
+pub mod session;
+pub mod spot;
+
 pub use stratyx_poker::import::{ImportReport, ImportedHand, import_text};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -749,6 +752,26 @@ mod tests {
     use super::*;
     use stratyx_poker::import::{SAMPLE_POKERSTARS, SAMPLE_WINAMAX, import_hand};
 
+    pub(crate) const BAD_CALL: &str = "PokerStars Hand #1: Tournament #2, $1+$0 USD Hold'em No Limit - Level I (10/20) - 2026/10/02 21:14:05 ET
+Table '2 1' 3-max Seat #1 is the button
+Seat 1: Vilain (500 in chips)
+Seat 2: Hero (500 in chips)
+Vilain: posts small blind 10
+Hero: posts big blind 20
+*** HOLE CARDS ***
+Dealt to Hero [7c 2d]
+Vilain: raises 480 to 500 and is all-in
+Hero: calls 480 and is all-in
+*** FLOP *** [As Kd 9h]
+*** TURN *** [As Kd 9h] [7h]
+*** RIVER *** [As Kd 9h 7h] [2s]
+*** SHOW DOWN ***
+Vilain: shows [Qc Jc]
+Hero: shows [7c 2d]
+Hero collected 1000 from pot
+*** SUMMARY ***
+";
+
     fn fast() -> Options {
         Options {
             samples: 1500,
@@ -790,25 +813,7 @@ mod tests {
     #[test]
     fn a_bad_call_is_flagged() {
         // Tête-à-tête à 25 BB : 72o suit un tapis.
-        let text = "PokerStars Hand #1: Tournament #2, $1+$0 USD Hold'em No Limit - Level I (10/20) - 2026/10/02 21:14:05 ET
-Table '2 1' 3-max Seat #1 is the button
-Seat 1: Vilain (500 in chips)
-Seat 2: Hero (500 in chips)
-Vilain: posts small blind 10
-Hero: posts big blind 20
-*** HOLE CARDS ***
-Dealt to Hero [7c 2d]
-Vilain: raises 480 to 500 and is all-in
-Hero: calls 480 and is all-in
-*** FLOP *** [As Kd 9h]
-*** TURN *** [As Kd 9h] [7h]
-*** RIVER *** [As Kd 9h 7h] [2s]
-*** SHOW DOWN ***
-Vilain: shows [Qc Jc]
-Hero: shows [7c 2d]
-Hero collected 1000 from pot
-*** SUMMARY ***
-";
+        let text = BAD_CALL;
         let (analyses, errors) = analyse_text(text, None, &fast());
         assert!(errors.is_empty(), "{errors:?}");
         let a = analyses[0].as_ref().unwrap();
