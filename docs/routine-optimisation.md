@@ -333,3 +333,29 @@ les garde-fous des itérations 7 et 8 couvrent ce chemin.
   publier sa taille, compressée et non compressée, à chaque build.
 - Cache navigateur du bundle : `pkg/` est servi avec `max-age=0` (revalidation à chaque
   visite).
+
+## 2026-11-13 — Itération 11 : analyse de spot face aux lectures d'image absurdes
+
+**Constat.** L'analyse de spot de `/app` (`analytics::spot::analyse_spot`) reçoit des
+montants lus sur des captures d'écran ou des vidéos (`f32`) et des cartes reconnues par la
+vision : `NaN`, infinis, négatifs, énormes, cartes en double ou déjà dans la main sont
+possibles, et une panique ferait planter la page (WebAssembly, `panic = "abort"`).
+
+**Changement.** Test `absurd_spots_never_panic` (dans `analytics/tests/robustesse.rs`) :
+1 500 spots au hasard par exécution — 0 à 12 joueurs, toutes les positions, board de 0 à 7
+cartes avec doublons, montants parmi `NaN`, ±∞, −1, 0, 1e30, `f32::MAX`…, les quatre
+situations, avec ou sans IA spécialisée. Garde-fou : une part réelle des spots doit aller au
+bout de l'analyse.
+
+**Résultat** (100 000 spots en local) : aucune panique ; 14 % analysés jusqu'au bout, le
+reste refusé avec un message clair (position impossible à la table, carte en double,
+relance illégale, « personne ne parle avant cette position »). 7 404 spots aux montants
+infinis ou énormes sont arrêtés par le plafond de jetons de l'itération 7
+(`MAX_TOTAL_CHIPS`) : ce correctif protégeait aussi ce chemin. Aucune correction de code
+nécessaire.
+
+**Pistes suivantes.**
+
+- Mesurer le vrai `pkg/stratyx_site_bg.wasm` (après `wasm-bindgen`) dans la CI du site.
+- Les messages « pas de HJ à 2 joueurs » apparaissent quand la vision lit 0 ou 1 joueur
+  (ramené à 2) : un message dédié (« nombre de joueurs illisible ») serait plus clair.
