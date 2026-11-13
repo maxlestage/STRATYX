@@ -29,8 +29,9 @@ stratyx-vision = { path = "../vision" }
 # `DATABASE_URL` (développement, tests). Pas de SQLite (bibliothèque C). Le TLS de PostgreSQL
 # passe par rustls + ring (C et assembleur) : exception propre au serveur du site, qui est
 # hors de l'audit `cargo deny` du produit (voir site/README.md, « Base de données »).
+# `compress` : réponses en Brotli ou gzip (brotli et flate2/miniz_oxide, en Rust pur).
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-paquets = { git = "https://github.com/maxlestage/Paquets", default-features = false, features = ["postgres"] }
+paquets = { git = "https://github.com/maxlestage/Paquets", default-features = false, features = ["postgres", "compress"] }
 # Pour l'export statique (déjà utilisé par Paquets).
 tokio = { version = "1", features = ["rt-multi-thread"] }
 

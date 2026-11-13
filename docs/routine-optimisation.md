@@ -274,3 +274,35 @@ corruptions passent, aller-retour compris.
 
 - Même invariant d'aller-retour pour `poker::import` (Winamax) si un export Winamax existe.
 - Site : poids du bundle WebAssembly, temps de premier affichage de `/app`.
+
+## 2026-11-13 — Itération 9 : site, réponses compressées (WebAssembly −70 %)
+
+**Constat.** Le serveur du site envoyait tout sans compression, et le routeur d'Heroku ne
+compresse pas : le WebAssembly des îlots (`pkg/stratyx_site_bg.wasm`, 2,32 Mo en
+`wasm-release`) et chaque page HTML partaient tels quels, ce qui pèse surtout sur mobile au
+premier affichage.
+
+**Changement** (`site/`) : fonctionnalité `compress` de Paquets (brotli et flate2 avec
+miniz_oxide, en Rust pur) et `app.middleware(middleware::compress())`. Brotli si le
+navigateur l'accepte, gzip sinon ; les fichiers statiques sont compressés une seule fois au
+niveau maximal puis gardés en cache, les pages au niveau rapide sur un fil bloquant ;
+`Vary: Accept-Encoding` est posé. Test `les_reponses_sont_compressees` (Brotli, gzip, et rien
+sans `Accept-Encoding`), qui échoue sans le middleware.
+
+**Mesures** (serveur release local, octets transférés) :
+
+| Ressource                  | Sans     | gzip    | Brotli  |
+| -------------------------- | -------- | ------- | ------- |
+| `stratyx_site_bg.wasm`     | 2 316 572 | 783 966 | 686 095 (−70 %) |
+| `/` (accueil)              | 35 212   | 10 751  | 9 724 (−72 %)   |
+| `/app`                     | 26 374   | 8 839   | 8 083 (−69 %)   |
+
+Décompression vérifiée identique au bit près (gzip et Brotli). Le WebAssembly compressé est
+servi en ~23 ms depuis le cache.
+
+**Pistes suivantes.**
+
+- Cache navigateur du bundle : `pkg/` est servi avec `max-age=0` (revalidation à chaque
+  visite) ; un nom de fichier versionné permettrait un cache long.
+- Taille du WebAssembly lui-même (2,3 Mo) : voir ce qui pèse (`twiggy` n'est pas installé ;
+  sections par crate via `cargo bloat --target wasm32`).
