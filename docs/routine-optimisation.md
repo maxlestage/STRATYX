@@ -150,3 +150,41 @@ Instructions (1 fil, 400 000 tirages) : 462 M → 370 M.
   (appelé à chaque décision simulée) mérite le même profilage.
 - `top::<N>` n'est pas toujours inliné : extraction des rangs déroulée.
 - `strategy/src/preflop.rs` : construction de la matrice préflop (temps, parallélisme).
+
+## 2026-11-13 — Itération 5 : entraînement des IA (conversions de cartes, allocations)
+
+**Constat** (callgrind sur `stratyx-train`, 1 fil) : l'entraînement passe 79 % de son temps
+dans `strategy::charts::best_responses` (les simulations du solveur push/fold), pas dans
+`mc.rs`. Hors évaluation, les coûts propres viennent de conversions élémentaires :
+
+- `CardSet::from_card` lisait `Rank::ALL[id / 4]` et `Suit::ALL[id % 4]`, avec contrôles de
+  bornes, à chaque carte tirée (`card.rs` : 7 % des instructions à lui seul) ;
+- `HoleCards::from_index` retrouvait la main par une boucle (jusqu'à 52 tours), pour chacune
+  des 1 326 combinaisons à chaque parcours de range (`Range::iter`, `Sampler::new`) ;
+- `hole_class` construisait une `HandClass` pour la ranger dans la grille ;
+- `simulate` allouait un `Vec` par main simulée (`malloc` + `free` : ~6 %).
+
+**Changements**, tous sans effet sur le générateur aléatoire :
+
+- `poker/src/cardset.rs` : le bit d'une carte se calcule directement depuis son
+  identifiant (`(id & 3) * 16 + (id >> 2)`). Test : égalité avec l'ancienne formule pour
+  les 52 cartes.
+- `poker/src/range.rs` : table des 1 326 combinaisons calculée à la compilation ;
+  `from_index` est une lecture (le test de bijection existant la couvre).
+- `strategy/src/classes.rs` : `hole_class` calculée depuis les identifiants. Test : égalité
+  avec `class_index(h.class())` pour les 1 326 combinaisons.
+- `strategy/src/charts.rs` : joueurs engagés dans un tableau fixe.
+
+**Mesures.** `stratyx-train --rapide` (2 000 mains par IA, 4 cœurs, meilleur de 3) :
+**4,58 s → 3,80 s** (−17 %). Les deux modèles produits (`expresso-3max.json`,
+`tournois-6max.json`) sont **identiques octet pour octet** à ceux de la version précédente.
+Ces conversions servent partout (analyse, vision, base locale) : le gain ne se limite pas à
+l'entraînement.
+
+**Pistes suivantes.**
+
+- `draw` (`strategy/src/classes.rs`) et `draw_for` (`charts.rs`) : le rejet des cartes déjà
+  prises et la conversion carte → bit restent sur le chemin chaud des simulations.
+- `Sampler::new` (`mc.rs`) reconstruit les ranges à chaque équité de la simulation : les
+  préparer une fois par main simulée (`equity_with`).
+- `top::<N>` n'est pas toujours inliné : extraction des rangs déroulée.

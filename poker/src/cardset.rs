@@ -26,9 +26,13 @@ impl CardSet {
         CardSet(FULL_DECK)
     }
 
+    /// Bit `couleur * 16 + rang`, calculé directement depuis l'identifiant
+    /// `rang * 4 + couleur` (sans passer par les tables `Rank::ALL` et `Suit::ALL`, dont les
+    /// contrôles de bornes coûtaient cher dans les simulations).
     #[inline]
     const fn bit(card: Card) -> u64 {
-        1u64 << (card.suit() as u64 * 16 + card.rank() as u64)
+        let id = card.id() as u64;
+        1u64 << ((id & 3) * 16 + (id >> 2))
     }
 
     #[must_use]
@@ -211,6 +215,14 @@ impl<'de> Deserialize<'de> for CardSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn card_bit_is_suit_times_16_plus_rank() {
+        for card in Card::all() {
+            let expected = 1u64 << (card.suit() as u64 * 16 + card.rank() as u64);
+            assert_eq!(CardSet::from_card(card).bits(), expected, "{card}");
+        }
+    }
 
     #[test]
     fn full_deck_has_52_distinct_cards() {
