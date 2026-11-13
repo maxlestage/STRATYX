@@ -475,3 +475,37 @@ Vérifié en local : YAML, dépendances de `merge` inchangées, extraction de la
 **Pistes suivantes.**
 
 - Lire le résumé du premier run du job `bundle` et reporter ici les vraies tailles servies.
+
+## 2026-11-13 — Itération 16 : CI rouge depuis l'itération 14 (clippy de Rust 1.100), corrigée
+
+**Incident.** La CI des itérations 14 et 15 a échoué au lint sur les trois systèmes :
+le clippy de Rust 1.100 (celui de la CI, `dtolnay/rust-toolchain@stable`) refuse
+`chunks_exact(4)` à taille constante (`clippy::chunks_exact_to_as_chunks`), utilisé par la
+nouvelle réduction d'image de l'itération 14. Localement, la toolchain était restée en Rust
+1.97, qui ne connaît pas ce lint : les vérifications locales étaient vertes. Conséquence :
+ni l'itération 14 ni la 15 n'ont été fusionnées dans `master` (la fusion automatique exige une
+CI verte), rien de cassé n'a été déployé.
+
+**Correction.** `vision/src/frame.rs` : `as_chunks::<4>()` / `as_chunks_mut::<4>()`, et
+sommes en `[u32; 4]` par colonne (plus lisible). Toolchain locale mise à jour
+(`rustup update stable` → Rust 1.100, comme la CI) : fmt, clippy (workspace, site natif et
+WebAssembly), tests (296 + 16) et évaluateur exhaustif verts ; test d'identité de la
+réduction toujours vert.
+
+**Leçon pour la routine.** Mettre la toolchain à jour (`rustup update stable`) avant de
+vérifier, et contrôler le résultat de la CI de l'itération précédente en début d'itération.
+
+**Premier rapport du job `bundle`** (itération 15, Rust 1.100) — tailles réellement servies :
+
+| Fichier                | Brut      | gzip -9 | Brotli -q 11     |
+| ---------------------- | --------- | ------- | ---------------- |
+| `stratyx_site_bg.wasm` | 1 246 069 | 417 920 | 333 794 (−73 %)  |
+| `stratyx_site.js`      | 70 330    | 10 770  | 9 105 (−87 %)    |
+
+Le WebAssembly servi fait donc 1,25 Mo (et non 2,3 Mo, taille du `.wasm` brut avant
+`wasm-bindgen`), soit ~334 Ko transférés avec la compression de l'itération 9.
+
+**Pistes suivantes.**
+
+- Ce qui pèse dans les 1,25 Mo : code (~1 Mo) et données (~430 Ko) ; les modèles des IA
+  embarqués dans le WebAssembly (JSON) sont un candidat.

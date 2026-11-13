@@ -114,28 +114,29 @@ impl Frame {
         let stride = self.width as usize * 4;
         // Sommes d'une ligne de sortie, canal par canal : une seule passe linéaire par ligne
         // source (la réduction pesait 80 % de `detect_cards` en 4K).
-        let mut acc = vec![0u32; nw as usize * 4];
+        let mut acc = vec![[0u32; 4]; nw as usize];
         for (y, out_row) in out.chunks_exact_mut(nw as usize * 4).enumerate() {
             let y0 = (y as f32 * sy) as u32;
             let y1 = (((y + 1) as f32 * sy) as u32).clamp(y0 + 1, self.height);
-            acc.fill(0);
+            acc.fill([0; 4]);
             for yy in y0..y1 {
                 let row = &self.rgba[yy as usize * stride..(yy as usize + 1) * stride];
-                for (px, &col) in row.chunks_exact(4).zip(&column_of) {
+                for (px, &col) in row.as_chunks::<4>().0.iter().zip(&column_of) {
                     if col == u32::MAX {
                         continue;
                     }
-                    let sum = &mut acc[col as usize * 4..col as usize * 4 + 4];
-                    sum[0] += u32::from(px[0]);
-                    sum[1] += u32::from(px[1]);
-                    sum[2] += u32::from(px[2]);
-                    sum[3] += u32::from(px[3]);
+                    let sum = &mut acc[col as usize];
+                    for c in 0..4 {
+                        sum[c] += u32::from(px[c]);
+                    }
                 }
             }
             let rows = y1 - y0;
             for ((o, sum), w) in out_row
-                .chunks_exact_mut(4)
-                .zip(acc.chunks_exact(4))
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(&acc)
                 .zip(&widths)
             {
                 let n = rows * w;
