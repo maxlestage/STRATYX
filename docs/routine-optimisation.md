@@ -274,3 +274,62 @@ corruptions passent, aller-retour compris.
 
 - Même invariant d'aller-retour pour `poker::import` (Winamax) si un export Winamax existe.
 - Site : poids du bundle WebAssembly, temps de premier affichage de `/app`.
+
+## 2026-11-13 — Itération 9 : site, réponses compressées (WebAssembly −70 %)
+
+**Constat.** Le serveur du site envoyait tout sans compression, et le routeur d'Heroku ne
+compresse pas : le WebAssembly des îlots (`pkg/stratyx_site_bg.wasm`, 2,32 Mo en
+`wasm-release`) et chaque page HTML partaient tels quels, ce qui pèse surtout sur mobile au
+premier affichage.
+
+**Changement** (`site/`) : fonctionnalité `compress` de Paquets (brotli et flate2 avec
+miniz_oxide, en Rust pur) et `app.middleware(middleware::compress())`. Brotli si le
+navigateur l'accepte, gzip sinon ; les fichiers statiques sont compressés une seule fois au
+niveau maximal puis gardés en cache, les pages au niveau rapide sur un fil bloquant ;
+`Vary: Accept-Encoding` est posé. Test `les_reponses_sont_compressees` (Brotli, gzip, et rien
+sans `Accept-Encoding`), qui échoue sans le middleware.
+
+**Mesures** (serveur release local, octets transférés) :
+
+| Ressource                  | Sans     | gzip    | Brotli  |
+| -------------------------- | -------- | ------- | ------- |
+| `stratyx_site_bg.wasm`     | 2 316 572 | 783 966 | 686 095 (−70 %) |
+| `/` (accueil)              | 35 212   | 10 751  | 9 724 (−72 %)   |
+| `/app`                     | 26 374   | 8 839   | 8 083 (−69 %)   |
+
+Décompression vérifiée identique au bit près (gzip et Brotli). Le WebAssembly compressé est
+servi en ~23 ms depuis le cache.
+
+> **Correction (itération 10).** Faute de `wasm-bindgen` en local, ces mesures ont été
+> faites sur le `.wasm` **brut** de `cargo build`, et non sur le fichier réellement servi
+> (`pkg/stratyx_site_bg.wasm`, produit par `wasm-bindgen`). Celui-ci est plus petit :
+> `wasm-bindgen` retire les 4 313 exports `__wbindgen_describe_*` (section export de
+> 250 Ko, et le code associé) et la section `__wasm_bindgen_unstable` (586 Ko). Le taux de
+> compression (~70 %) reste représentatif ; les octets absolus, non.
+
+**Pistes suivantes.**
+
+- Cache navigateur du bundle : `pkg/` est servi avec `max-age=0` (revalidation à chaque
+  visite) ; un nom de fichier versionné permettrait un cache long.
+- Taille du WebAssembly lui-même (2,3 Mo) : voir ce qui pèse (`twiggy` n'est pas installé ;
+  sections par crate via `cargo bloat --target wasm32`).
+
+## 2026-11-13 — Itération 10 : la page `/app` face aux historiques abîmés
+
+**Constat.** La page `/app` importe et analyse dans le navigateur les historiques que
+l'utilisateur dépose, en WebAssembly compilé avec `panic = "abort"` : la moindre panique dans
+l'import ou l'analyse ferait planter la page entière, sans message.
+
+**Changement.** Nouveau test `analytics/tests/robustesse.rs` qui suit exactement le parcours
+de la page : import, analyse de chaque main pour le héros saisi (vide, joueur de la table,
+inconnu, bruit), puis bilan de session (`SessionBuilder`). Sur les historiques intacts, il
+vérifie d'abord que l'analyse aboutit vraiment (décisions évaluées) ; puis 400 corruptions
+aléatoires par exécution (50 000 en local : aucune panique). Pas de correction nécessaire :
+les garde-fous des itérations 7 et 8 couvrent ce chemin.
+
+**Pistes suivantes.**
+
+- Mesurer le vrai `pkg/stratyx_site_bg.wasm` (après `wasm-bindgen`) : la CI du site pourrait
+  publier sa taille, compressée et non compressée, à chaque build.
+- Cache navigateur du bundle : `pkg/` est servi avec `max-age=0` (revalidation à chaque
+  visite).
