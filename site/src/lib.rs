@@ -11,16 +11,20 @@ use stratyx_poker::icm::icm_equities;
 use stratyx_poker::{Card, CardSet, HandClass, HoleCards, Range, Rank};
 use stratyx_shared::Chips;
 
+pub mod analyse;
+#[cfg(target_arch = "wasm32")]
+mod anim;
 #[cfg(target_arch = "wasm32")]
 mod mouvement;
 #[cfg(target_arch = "wasm32")]
 mod scenes;
 
 /// Les îlots, sous le nom donné à `island(...)`.
-pub const ISLANDS: [(&str, paquets::active::IslandFn); 7] = [
+pub const ISLANDS: [(&str, paquets::active::IslandFn); 8] = [
     ("mouvement", mouvement),
-    ("hero3d", hero3d),
-    ("table3d", table3d),
+    ("analyse", analyse::analyse),
+    ("hero2d", hero2d),
+    ("table2d", table2d),
     ("equite", equite),
     ("grille", grille),
     ("icm", icm),
@@ -66,7 +70,7 @@ pub fn donner(n: usize) -> Vec<u8> {
 }
 
 /// Lance `f` un peu plus tard, pour que la page affiche d'abord « calcul en cours ».
-fn plus_tard(f: impl FnOnce() + 'static) {
+pub(crate) fn plus_tard(f: impl FnOnce() + 'static) {
     #[cfg(target_arch = "wasm32")]
     {
         use wasm_bindgen::JsCast;
@@ -176,12 +180,12 @@ pub fn analyser(cartes: &[u8], etape: u8) -> (String, String) {
 }
 
 // ————————————————————————————————————————————————————————————————————————————
-// Liens entre les boutons d'un îlot et sa scène 3D
+// Liens entre les boutons d'un îlot et sa scène 2D
 // ————————————————————————————————————————————————————————————————————————————
 
 /// Quelle scène lancer dans un canvas.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Scene3d {
+pub enum Scene {
     /// Le fond du héros.
     Hero,
     /// La table de la démo.
@@ -224,7 +228,7 @@ impl Default for Liens {
 #[cfg(target_arch = "wasm32")]
 fn lancer(
     canvas: &paquets::active::Dom,
-    scene: Scene3d,
+    scene: Scene,
     info: State<u32>,
     liens: Liens,
 ) -> impl FnOnce() + use<> {
@@ -236,7 +240,7 @@ fn lancer(
 #[cfg(not(target_arch = "wasm32"))]
 fn lancer(
     _canvas: &paquets::active::Dom,
-    _scene: Scene3d,
+    _scene: Scene,
     _info: State<u32>,
     _liens: Liens,
 ) -> impl FnOnce() + use<> {
@@ -259,19 +263,20 @@ pub fn mouvement(_props: &str) -> Node {
         .into()
 }
 
-/// Le fond du héros : jetons et cartes en orbite, qui suivent le pointeur et le défilement.
-pub fn hero3d(_props: &str) -> Node {
+/// Le fond du héros : jetons et cartes à plat qui flottent, suivent le pointeur et le
+/// défilement (Canvas 2D).
+pub fn hero2d(_props: &str) -> Node {
     let ips = use_state(0u32);
     let l = Liens::default();
     fragment([
         canvas()
             .class("hero-canvas")
             .attr("aria-hidden", "true")
-            .use_action(move |canvas| lancer(canvas, Scene3d::Hero, ips, l)),
+            .use_action(move |canvas| lancer(canvas, Scene::Hero, ips, l)),
         p().class("hud")
             .attr("aria-hidden", "true")
             .child(span().class("hud-dot"))
-            .text("paquets::three · WebGL 2 · ")
+            .text("Canvas 2D · ")
             .text_dyn(move || match ips.get() {
                 0 => "—".into(),
                 n => n.to_string(),
@@ -280,8 +285,9 @@ pub fn hero3d(_props: &str) -> Node {
     ])
 }
 
-/// La démo : une table en 3D, une main distribuée et analysée par le moteur STRATYX.
-pub fn table3d(_props: &str) -> Node {
+/// La démo : une table vue de dessus (Canvas 2D), une main distribuée et analysée par le
+/// moteur STRATYX.
+pub fn table2d(_props: &str) -> Node {
     let l = Liens::default();
     let ips = use_state(0u32);
     let (titre0, eq0) = analyser(&MAIN_INITIALE, 0);
@@ -307,12 +313,12 @@ pub fn table3d(_props: &str) -> Node {
                     canvas()
                         .class("table-canvas")
                         .attr("role", "img")
-                        .attr("aria-label", "Table de poker en 3D")
-                        .use_action(move |canvas| lancer(canvas, Scene3d::Table, ips, l)),
+                        .attr("aria-label", "Table de poker vue de dessus")
+                        .use_action(move |canvas| lancer(canvas, Scene::Table, ips, l)),
                 )
                 .child(
                     p().class("stage-hint")
-                        .text("↻ Glissez pour tourner autour de la table · ")
+                        .text("Survolez un siège · Canvas 2D · ")
                         .text_dyn(move || match ips.get() {
                             0 => "—".into(),
                             n => format!("{n} ips"),
@@ -811,7 +817,7 @@ pub fn icm(_props: &str) -> Node {
 }
 
 /// La pluie de jetons : des jetons qui tombent, rebondissent et s'empilent sur le tapis,
-/// avec la physique de `paquets::three::Physics`.
+/// avec une physique 2D écrite en Rust (src/scenes.rs).
 pub fn jetons(_props: &str) -> Node {
     let l = Liens::default();
     let compte = use_state(0u32);
@@ -823,9 +829,9 @@ pub fn jetons(_props: &str) -> Node {
                 .attr("role", "img")
                 .attr(
                     "aria-label",
-                    "Des jetons 3D tombent et s'empilent sur le tapis",
+                    "Des jetons tombent et s'empilent sur le tapis ; touchez pour en lâcher",
                 )
-                .use_action(move |canvas| lancer(canvas, Scene3d::Jetons, compte, l)),
+                .use_action(move |canvas| lancer(canvas, Scene::Jetons, compte, l)),
         )
         .child(
             div()

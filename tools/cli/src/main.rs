@@ -5,6 +5,7 @@
 //! stratyx equity "AhKh" "QQ+,AKo" --board Qs7h2h
 //! stratyx range "22+,A2s+,KTo+"
 //! stratyx icm --stacks 5000,3000,2000 --payouts 50,30,20
+//! stratyx analyse historique.txt --joueur Hero
 //! ```
 
 use std::process::ExitCode;
@@ -23,6 +24,10 @@ Usage :
   stratyx range <range>                       nombre de combinaisons d'une range
   stratyx icm --stacks <a,b,...> --payouts <x,y,...>
                                               équité ICM (Malmuth-Harville)
+  stratyx analyse <fichier | -> [--joueur <nom>] [--format texte|json]
+                                              analyse après partie d'historiques texte
+                                              (PokerStars, Winamax) : chaque décision
+                                              comparée à la référence des IA
 
 Exemples de range : AA, AKs, AKo, TT+, ATs+, 22-55, A2s-A5s, AsKd, AKs:0.5, random";
 
@@ -155,8 +160,100 @@ fn run(args: &[String]) -> Result<(), String> {
                 );
             }
         }
+        "analyse" | "analyze" => {
+            let path = positional.first().copied().unwrap_or("-");
+            let text = if path == "-" {
+                let mut s = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut s)
+                    .map_err(|e| e.to_string())?;
+                s
+            } else {
+                let bytes = std::fs::read(path).map_err(|e| format!("{path} : {e}"))?;
+                String::from_utf8_lossy(&bytes).into_owned()
+            };
+            let hero = option(&options, "joueur");
+            let (analyses, errors) = stratyx_analytics::analyse_text(
+                &text,
+                hero,
+                &stratyx_analytics::Options::default(),
+            );
+            for e in &errors {
+                eprintln!("⚠ {e}");
+            }
+            if option(&options, "format") == Some("json") {
+                let ok: Vec<_> = analyses.iter().filter_map(|a| a.as_ref().ok()).collect();
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&ok).map_err(|e| e.to_string())?
+                );
+                return Ok(());
+            }
+            for a in &analyses {
+                match a {
+                    Ok(a) => print_analysis(a),
+                    Err(e) => eprintln!("⚠ {e}"),
+                }
+            }
+            if analyses.is_empty() {
+                return Err("aucune main lisible".into());
+            }
+        }
         "help" | "--help" | "-h" => println!("{USAGE}"),
         other => return Err(format!("commande inconnue : {other}")),
     }
     Ok(())
+}
+
+/// Affiche une analyse de main dans le terminal.
+fn print_analysis(a: &stratyx_analytics::HandAnalysis) {
+    use stratyx_analytics::{bb, pct};
+    println!("━━ Main {} · {} · {}", a.id, a.format, a.engine);
+    println!(
+        "{} ({}) · {} · tapis {}",
+        a.hero,
+        a.position,
+        a.hero_cards,
+        bb(a.stack_bb)
+    );
+    for l in &a.lines {
+        if l.player.is_empty() {
+            println!("  ── {}", l.text);
+        } else {
+            let mark = if l.hero { "▶" } else { " " };
+            println!(
+                "  {mark} {:<4} {:<14} {:<26} pot {}",
+                l.position,
+                l.player,
+                l.text,
+                bb(l.pot_bb)
+            );
+        }
+    }
+    for (i, d) in a.decisions.iter().enumerate() {
+        let odds = if d.facing_bet {
+            format!(" · cote {}", pct(d.pot_odds))
+        } else {
+            String::new()
+        };
+        println!(
+            "\n  Décision {} · {:?} · {} · équité {}{odds}",
+            i + 1,
+            d.street,
+            d.severity.label(),
+            pct(d.equity),
+        );
+        println!("    joué : {} · référence : {}", d.played_text, d.best_text);
+        println!("    {}", d.comment);
+    }
+    println!(
+        "\n  Note {}/100 · {} · EV perdue {} · {}",
+        a.summary.score,
+        a.summary.verdict,
+        bb(a.summary.ev_lost_bb),
+        a.outcome
+    );
+    for t in &a.summary.tips {
+        println!("  → {t}");
+    }
+    println!();
 }
