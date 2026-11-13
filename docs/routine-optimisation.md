@@ -188,3 +188,35 @@ l'entraînement.
 - `Sampler::new` (`mc.rs`) reconstruit les ranges à chaque équité de la simulation : les
   préparer une fois par main simulée (`equity_with`).
 - `top::<N>` n'est pas toujours inliné : extraction des rangs déroulée.
+
+## 2026-11-13 — Itération 6 : empaquetage direct des rangs dans l'évaluateur
+
+**Constat.** Nouveau profil de l'entraînement : 12,4 G instructions (15,9 G avant
+l'itération 5). Le générateur ChaCha pèse ~12 % mais n'est pas modifiable sans changer les
+modèles. Le reste est très dispersé, sauf autour de l'évaluateur : `top::<3>` et `top::<5>`
+n'étaient pas inlinés, `HandRank::pack` empaquetait les rangs par une boucle sur un tableau,
+et `r2.count_ones() >= 2` émulait encore un `popcnt`.
+
+**Changements** (`poker/src/eval.rs`) : la valeur est construite directement (`at`,
+`top_at`, `#[inline(always)]`), « au moins deux paires » devient `r2 & r2.wrapping_sub(1)`.
+L'encodage est inchangé, ce qui compte puisque `HandRank` est sérialisé tel quel : le test
+croisé contre l'évaluateur naïf compare désormais la **valeur exacte** (et plus seulement la
+catégorie et l'ordre) sur 50 000 mains ; le test exhaustif des 133 M mains passe.
+
+**Mesures.** `AhKh QsQd`, 1 fil : 597 M → 574 M instructions (−4 %) ; en temps, 44,3 →
+43,9 ms sur 1 fil (bruit), 15,8 → 13,8 ms sur 4 cœurs ; Monte-Carlo 2 M tirages, 4 cœurs :
+54,1 → 49,5 ms. Entraînement `--rapide` inchangé (3,8 s), modèles identiques octet pour
+octet.
+
+**Bilan des chemins chauds.** L'évaluateur fait ~60 instructions sur le chemin courant
+(paire ou hauteur), sans appel ni boucle : on arrive aux rendements décroissants sans
+changer d'algorithme (tables de rangs) ou de générateur aléatoire (ce qui changerait les
+modèles entraînés). Cumul depuis le début de la routine : `AhKh QsQd` exact 78 → 14 ms
+(4 cœurs), Monte-Carlo −25 à −40 %, entraînement −17 %.
+
+**Pistes suivantes** (au-delà de la performance pure) :
+
+- Robustesse des imports d'historiques (`poker/src/import.rs`, `database/src/text/`) :
+  fichiers tronqués, encodages, formats inattendus — tests de fuzzing déterministes.
+- Site : poids du bundle WebAssembly, temps de premier affichage de `/app`.
+- `Sampler::new` (`mc.rs`) reconstruit les ranges à chaque équité de la simulation.

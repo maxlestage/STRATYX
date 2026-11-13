@@ -82,13 +82,10 @@ impl fmt::Display for HandCategory {
 pub struct HandRank(u32);
 
 impl HandRank {
-    #[inline]
-    fn pack(category: HandCategory, ranks: &[u8]) -> HandRank {
-        let mut v = (category as u32) << 20;
-        for (i, r) in ranks.iter().enumerate() {
-            v |= u32::from(*r) << (16 - 4 * i);
-        }
-        HandRank(v)
+    /// Catégorie et rangs déjà placés (voir [`at`] et [`top_at`]).
+    #[inline(always)]
+    const fn new(category: HandCategory, ranks: u32) -> HandRank {
+        HandRank(((category as u32) << 20) | ranks)
     }
 
     #[must_use]
@@ -123,22 +120,31 @@ impl fmt::Debug for HandRank {
     }
 }
 
-#[inline]
+#[inline(always)]
 fn highest(mask: u32) -> u8 {
     debug_assert!(mask != 0);
     (31 - mask.leading_zeros()) as u8
 }
 
-/// Les `N` rangs les plus hauts du masque, dans l'ordre décroissant.
-#[inline]
-fn top<const N: usize>(mut mask: u32) -> [u8; N] {
-    let mut out = [0u8; N];
-    for slot in &mut out {
+/// Le rang `r` placé à la position `slot` de l'encodage (0 = rang principal, bits 16 à 19,
+/// puis les kickers sur les 4 bits suivants vers le bas).
+#[inline(always)]
+const fn at(slot: u32, r: u8) -> u32 {
+    (r as u32) << (16 - 4 * slot)
+}
+
+/// Les `n` rangs les plus hauts du masque, par ordre décroissant, placés aux positions
+/// `slot`, `slot + 1`… : la valeur est construite directement, sans tableau intermédiaire
+/// (chemin chaud de toutes les simulations).
+#[inline(always)]
+fn top_at(mut mask: u32, slot: u32, n: u32) -> u32 {
+    let mut v = 0;
+    for i in slot..slot + n {
         let r = highest(mask);
-        *slot = r;
-        mask &= !(1 << r);
+        v |= at(i, r);
+        mask ^= 1 << r;
     }
-    out
+    v
 }
 
 /// Rang de la carte haute de la meilleure quinte contenue dans le masque, s'il y en a une.
@@ -187,9 +193,9 @@ pub fn evaluate(cards: CardSet) -> HandRank {
     // Avec 7 cartes au plus, une couleur exclut carré et full : on peut conclure tout de suite.
     if let Some(m) = flush_mask(cards.bits()) {
         if let Some(hi) = straight_high(m) {
-            return HandRank::pack(HandCategory::StraightFlush, &[hi]);
+            return HandRank::new(HandCategory::StraightFlush, at(0, hi));
         }
-        return HandRank::pack(HandCategory::Flush, &top::<5>(m));
+        return HandRank::new(HandCategory::Flush, top_at(m, 0, 5));
     }
 
     let c = u32::from(cards.suit_mask(Suit::Clubs));
@@ -208,34 +214,36 @@ pub fn evaluate(cards: CardSet) -> HandRank {
     if r4 != 0 {
         let q = highest(r4);
         let k = highest(r1 & !(1 << q));
-        return HandRank::pack(HandCategory::FourOfAKind, &[q, k]);
+        return HandRank::new(HandCategory::FourOfAKind, at(0, q) | at(1, k));
     }
     if r3 != 0 {
         let t = highest(r3);
         let pairs = r2 & !(1 << t);
         if pairs != 0 {
-            return HandRank::pack(HandCategory::FullHouse, &[t, highest(pairs)]);
+            return HandRank::new(HandCategory::FullHouse, at(0, t) | at(1, highest(pairs)));
         }
     }
     if let Some(hi) = straight_high(r1) {
-        return HandRank::pack(HandCategory::Straight, &[hi]);
+        return HandRank::new(HandCategory::Straight, at(0, hi));
     }
     if r3 != 0 {
         let t = highest(r3);
-        let [k1, k2] = top::<2>(r1 & !(1 << t));
-        return HandRank::pack(HandCategory::ThreeOfAKind, &[t, k1, k2]);
+        let kickers = top_at(r1 & !(1 << t), 1, 2);
+        return HandRank::new(HandCategory::ThreeOfAKind, at(0, t) | kickers);
     }
-    if r2.count_ones() >= 2 {
-        let [p1, p2] = top::<2>(r2);
+    // Au moins deux paires : au moins deux bits (sans `count_ones`, coûteux sans `popcnt`).
+    if r2 & r2.wrapping_sub(1) != 0 {
+        let p1 = highest(r2);
+        let p2 = highest(r2 ^ (1 << p1));
         let k = highest(r1 & !(1 << p1) & !(1 << p2));
-        return HandRank::pack(HandCategory::TwoPair, &[p1, p2, k]);
+        return HandRank::new(HandCategory::TwoPair, at(0, p1) | at(1, p2) | at(2, k));
     }
     if r2 != 0 {
         let p = highest(r2);
-        let [k1, k2, k3] = top::<3>(r1 & !(1 << p));
-        return HandRank::pack(HandCategory::OnePair, &[p, k1, k2, k3]);
+        let kickers = top_at(r1 & !(1 << p), 1, 3);
+        return HandRank::new(HandCategory::OnePair, at(0, p) | kickers);
     }
-    HandRank::pack(HandCategory::HighCard, &top::<5>(r1))
+    HandRank::new(HandCategory::HighCard, top_at(r1, 0, 5))
 }
 
 /// Les cinq cartes qui composent la meilleure main (pour l'affichage et l'export).
@@ -469,6 +477,16 @@ mod tests {
             let fast = evaluate(hand.iter().collect());
             let naive = naive_seven(hand);
             assert_eq!(fast.category() as u8, naive.0, "{hand:?}");
+            // Valeur encodée exacte (elle est sérialisée telle quelle) : catégorie puis rangs
+            // significatifs sur 4 bits chacun.
+            let encoded = naive
+                .1
+                .iter()
+                .enumerate()
+                .fold(u32::from(naive.0) << 20, |v, (i, r)| {
+                    v | u32::from(*r) << (16 - 4 * i)
+                });
+            assert_eq!(fast.value(), encoded, "{hand:?}");
             if let Some((pf, pn)) = &prev {
                 assert_eq!(fast.cmp(pf), naive.cmp(pn), "{hand:?}");
             }
