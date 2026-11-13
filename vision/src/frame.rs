@@ -91,6 +91,69 @@ impl Frame {
         let mut out = vec![0u8; nw as usize * nh as usize * 4];
         let sx = self.width as f32 / nw as f32;
         let sy = self.height as f32 / nh as f32;
+        // Les boîtes de pixels couvertes par chaque colonne de sortie, calculées une fois
+        // (mêmes bornes qu'un calcul pixel par pixel, donc même résultat au bit près) : la
+        // colonne de sortie de chaque colonne source, et la largeur de chaque boîte.
+        let mut column_of = vec![u32::MAX; self.width as usize];
+        let mut widths = vec![0u32; nw as usize];
+        for x in 0..nw {
+            let x0 = (x as f32 * sx) as u32;
+            let x1 = (((x + 1) as f32 * sx) as u32).clamp(x0 + 1, self.width);
+            column_of[x0 as usize..x1 as usize].fill(x);
+            widths[x as usize] = x1 - x0;
+        }
+        // Les boîtes se suivent sans se chevaucher (réduction : `sx > 1`) ; sinon, retour au
+        // calcul pixel par pixel.
+        let partition = (0..nw).all(|x| {
+            let x0 = (x as f32 * sx) as u32 as usize;
+            column_of[x0] == x
+        });
+        if !partition {
+            return self.downscale_per_pixel(nw, nh, sx, sy);
+        }
+        let stride = self.width as usize * 4;
+        // Sommes d'une ligne de sortie, canal par canal : une seule passe linéaire par ligne
+        // source (la réduction pesait 80 % de `detect_cards` en 4K).
+        let mut acc = vec![0u32; nw as usize * 4];
+        for (y, out_row) in out.chunks_exact_mut(nw as usize * 4).enumerate() {
+            let y0 = (y as f32 * sy) as u32;
+            let y1 = (((y + 1) as f32 * sy) as u32).clamp(y0 + 1, self.height);
+            acc.fill(0);
+            for yy in y0..y1 {
+                let row = &self.rgba[yy as usize * stride..(yy as usize + 1) * stride];
+                for (px, &col) in row.chunks_exact(4).zip(&column_of) {
+                    if col == u32::MAX {
+                        continue;
+                    }
+                    let sum = &mut acc[col as usize * 4..col as usize * 4 + 4];
+                    sum[0] += u32::from(px[0]);
+                    sum[1] += u32::from(px[1]);
+                    sum[2] += u32::from(px[2]);
+                    sum[3] += u32::from(px[3]);
+                }
+            }
+            let rows = y1 - y0;
+            for ((o, sum), w) in out_row
+                .chunks_exact_mut(4)
+                .zip(acc.chunks_exact(4))
+                .zip(&widths)
+            {
+                let n = rows * w;
+                for c in 0..4 {
+                    o[c] = (sum[c] / n) as u8;
+                }
+            }
+        }
+        Frame {
+            width: nw,
+            height: nh,
+            rgba: out,
+        }
+    }
+
+    /// La réduction pixel par pixel, pour le cas (théorique) de boîtes qui se chevauchent.
+    pub(crate) fn downscale_per_pixel(&self, nw: u32, nh: u32, sx: f32, sy: f32) -> Frame {
+        let mut out = vec![0u8; nw as usize * nh as usize * 4];
         for y in 0..nh {
             let y0 = (y as f32 * sy) as u32;
             let y1 = (((y + 1) as f32 * sy) as u32).clamp(y0 + 1, self.height);
