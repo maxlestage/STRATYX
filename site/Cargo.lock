@@ -872,6 +872,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "stratyx-ai-expresso"
+version = "0.1.0"
+dependencies = [
+ "stratyx-poker",
+ "stratyx-strategy",
+]
+
+[[package]]
+name = "stratyx-ai-tournament"
+version = "0.1.0"
+dependencies = [
+ "stratyx-poker",
+ "stratyx-strategy",
+]
+
+[[package]]
+name = "stratyx-analytics"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "stratyx-ai-expresso",
+ "stratyx-ai-tournament",
+ "stratyx-poker",
+ "stratyx-shared",
+ "stratyx-strategy",
+ "thiserror",
+]
+
+[[package]]
 name = "stratyx-poker"
 version = "0.1.0"
 dependencies = [
@@ -898,11 +927,26 @@ dependencies = [
  "getrandom 0.3.4",
  "js-sys",
  "paquets",
+ "stratyx-analytics",
  "stratyx-poker",
  "stratyx-shared",
+ "stratyx-strategy",
  "tokio",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "stratyx-strategy"
+version = "0.1.0"
+dependencies = [
+ "rand 0.9.5",
+ "rand_chacha",
+ "rayon",
+ "serde",
+ "serde_json",
+ "stratyx-poker",
+ "stratyx-shared",
 ]
 
 [[package]]
