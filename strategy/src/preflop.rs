@@ -536,7 +536,7 @@ impl PreflopMatrix {
         let n = NUM_CLASSES * NUM_CLASSES;
         let mut equity = Vec::with_capacity(n);
         let mut tie = Vec::with_capacity(n);
-        for chunk in bytes[HEADER_LEN..].chunks_exact(4) {
+        for chunk in bytes[HEADER_LEN..].as_chunks::<4>().0 {
             let e = u16::from_le_bytes([chunk[0], chunk[1]]);
             let t = u16::from_le_bytes([chunk[2], chunk[3]]);
             equity.push((f64::from(e) / SCALE) as f32);

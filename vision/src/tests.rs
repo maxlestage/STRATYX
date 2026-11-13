@@ -444,7 +444,7 @@ fn keyframer_keeps_only_changes() {
     // Même table, avec un bruit de capture supplémentaire.
     let mut b = a.clone();
     let mut rng = ChaCha8Rng::seed_from_u64(9);
-    for v in b.rgba.chunks_exact_mut(4) {
+    for v in b.rgba.as_chunks_mut::<4>().0 {
         for c in &mut v[..3] {
             *c = (i32::from(*c) + rng.random_range(-8..=8)).clamp(0, 255) as u8;
         }

@@ -92,8 +92,10 @@ fn captures_window_and_screen_region() {
         .unwrap();
     assert!(
         zone.rgba
-            .chunks_exact(4)
-            .all(|p| p == [0x20, 0x50, 0xC0, 255])
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|p| *p == [0x20, 0x50, 0xC0, 255])
     );
 
     // Écran entier : la fenêtre est à (40, 60).
