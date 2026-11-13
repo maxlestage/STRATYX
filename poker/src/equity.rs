@@ -82,14 +82,20 @@ pub struct EquityResult {
     pub deals: u64,
 }
 
-/// Accumulateur pondéré par joueur.
+/// Sommes pondérées d'un joueur.
+#[derive(Debug, Clone, Copy, Default)]
+struct PlayerAcc {
+    equity: f64,
+    equity_sq: f64,
+    win: f64,
+    tie: f64,
+}
+
+/// Accumulateur pondéré, un [`PlayerAcc`] par joueur.
 #[derive(Clone)]
 struct Acc {
     weight: f64,
-    equity: Vec<f64>,
-    equity_sq: Vec<f64>,
-    win: Vec<f64>,
-    tie: Vec<f64>,
+    players: Vec<PlayerAcc>,
     deals: u64,
 }
 
@@ -97,10 +103,7 @@ impl Acc {
     fn new(n: usize) -> Acc {
         Acc {
             weight: 0.0,
-            equity: vec![0.0; n],
-            equity_sq: vec![0.0; n],
-            win: vec![0.0; n],
-            tie: vec![0.0; n],
+            players: vec![PlayerAcc::default(); n],
             deals: 0,
         }
     }
@@ -108,35 +111,49 @@ impl Acc {
     fn merge(mut self, o: Acc) -> Acc {
         self.weight += o.weight;
         self.deals += o.deals;
-        for i in 0..self.equity.len() {
-            self.equity[i] += o.equity[i];
-            self.equity_sq[i] += o.equity_sq[i];
-            self.win[i] += o.win[i];
-            self.tie[i] += o.tie[i];
+        for (p, q) in self.players.iter_mut().zip(&o.players) {
+            p.equity += q.equity;
+            p.equity_sq += q.equity_sq;
+            p.win += q.win;
+            p.tie += q.tie;
         }
         self
     }
 
-    /// Abattage : `holes` contient la main de chaque joueur, `board` est complet.
+    /// Abattage : `hands` contient les deux cartes de chaque joueur, `board` est complet.
+    ///
+    /// Chemin chaud de l'énumération exacte (un appel par board) : les mains arrivent déjà
+    /// converties en [`CardSet`], on repère le gagnant pendant l'évaluation et, quand il est
+    /// seul (le cas courant), on ne met à jour que lui.
     #[inline]
-    fn showdown(&mut self, holes: &[HoleCards], board: CardSet, weight: f64) {
+    fn showdown(&mut self, hands: &[CardSet], board: CardSet, weight: f64) {
         let mut ranks = [0u32; MAX_PLAYERS];
         let mut best = 0u32;
-        for (i, h) in holes.iter().enumerate() {
-            let r = evaluate(board | h.set()).value();
-            ranks[i] = r;
-            best = best.max(r);
+        let mut winners = 0usize;
+        let mut winner = 0usize;
+        for (i, (hand, rank)) in hands.iter().zip(&mut ranks).enumerate() {
+            let r = evaluate(board | *hand).value();
+            *rank = r;
+            if winners == 0 || r > best {
+                best = r;
+                winners = 1;
+                winner = i;
+            } else if r == best {
+                winners += 1;
+            }
         }
-        let winners = ranks[..holes.len()].iter().filter(|r| **r == best).count();
-        let share = 1.0 / winners as f64;
-        for (i, rank) in ranks.iter().enumerate().take(holes.len()) {
-            if *rank == best {
-                self.equity[i] += weight * share;
-                self.equity_sq[i] += weight * share * share;
-                if winners == 1 {
-                    self.win[i] += weight;
-                } else {
-                    self.tie[i] += weight;
+        if winners == 1 {
+            let p = &mut self.players[winner];
+            p.equity += weight;
+            p.equity_sq += weight;
+            p.win += weight;
+        } else {
+            let share = 1.0 / winners as f64;
+            for (p, rank) in self.players.iter_mut().zip(&ranks) {
+                if *rank == best {
+                    p.equity += weight * share;
+                    p.equity_sq += weight * share * share;
+                    p.tie += weight;
                 }
             }
         }
@@ -149,20 +166,22 @@ impl Acc {
             return Err(EquityError::NoValidDeal);
         }
         let w = self.weight;
-        let players = (0..self.equity.len())
-            .map(|i| {
-                let mean = self.equity[i] / w;
+        let players = self
+            .players
+            .iter()
+            .map(|p| {
+                let mean = p.equity / w;
                 let std_error = match method {
                     EquityMethod::Exact => 0.0,
                     EquityMethod::MonteCarlo => {
-                        let var = (self.equity_sq[i] / w - mean * mean).max(0.0);
+                        let var = (p.equity_sq / w - mean * mean).max(0.0);
                         (var / self.deals as f64).sqrt()
                     }
                 };
                 PlayerEquity {
                     equity: mean,
-                    win: self.win[i] / w,
-                    tie: self.tie[i] / w,
+                    win: p.win / w,
+                    tie: p.tie / w,
                     std_error,
                 }
             })
@@ -175,18 +194,29 @@ impl Acc {
     }
 }
 
-/// Appelle `f` pour chaque sous-ensemble de `k` cartes de `cards`.
-fn for_each_combination(cards: &[Card], k: usize, mut f: impl FnMut(CardSet)) {
-    fn rec(cards: &[Card], k: usize, start: usize, acc: CardSet, f: &mut impl FnMut(CardSet)) {
-        if k == 0 {
-            f(acc);
+/// Les cartes de `set`, chacune sous forme d'ensemble à une carte, dans l'ordre de
+/// [`CardSet::iter`].
+fn singletons(set: CardSet) -> Vec<CardSet> {
+    set.iter().map(CardSet::from_card).collect()
+}
+
+/// Appelle `f` pour chaque union de `k` éléments de `cards` (des ensembles à une carte).
+fn for_each_combination(cards: &[CardSet], k: usize, mut f: impl FnMut(CardSet)) {
+    fn rec(cards: &[CardSet], k: usize, start: usize, acc: CardSet, f: &mut impl FnMut(CardSet)) {
+        // Dernier niveau en boucle simple : c'est là que passe chaque board.
+        if k == 1 {
+            for c in &cards[start..] {
+                f(acc | *c);
+            }
             return;
         }
         for i in start..=cards.len() - k {
-            rec(cards, k - 1, i + 1, acc | CardSet::from_card(cards[i]), f);
+            rec(cards, k - 1, i + 1, acc | cards[i], f);
         }
     }
-    if k <= cards.len() {
+    if k == 0 {
+        f(CardSet::EMPTY);
+    } else if k <= cards.len() {
         rec(cards, k, 0, CardSet::EMPTY, &mut f);
     }
 }
@@ -263,7 +293,7 @@ fn exact(
             if holes.len() < n {
                 ctx.rec(holes.len(), task.used, task.weight, &mut holes, &mut acc);
             } else {
-                let deck: Vec<Card> = (!task.used).iter().collect();
+                let deck = singletons(!task.used);
                 ExactCtx::leaf(
                     &holes,
                     board | task.extra,
@@ -337,10 +367,10 @@ fn exact_tasks(combos: &[Vec<(HoleCards, f64)>], known: CardSet, to_deal: usize)
         tasks = tasks
             .into_iter()
             .flat_map(|task| {
-                let deck: Vec<Card> = (!task.used).iter().collect();
+                let deck = singletons(!task.used);
                 (task.start..=deck.len() - task.to_deal)
                     .map(|i| ExactTask {
-                        extra: task.extra | CardSet::from_card(deck[i]),
+                        extra: task.extra | deck[i],
                         start: i + 1,
                         to_deal: task.to_deal - 1,
                         ..task.clone()
@@ -363,16 +393,21 @@ impl ExactCtx<'_> {
     fn leaf(
         holes: &[HoleCards],
         board: CardSet,
-        deck: &[Card],
+        deck: &[CardSet],
         to_deal: usize,
         weight: f64,
         acc: &mut Acc,
     ) {
+        let mut sets = [CardSet::EMPTY; MAX_PLAYERS];
+        for (set, h) in sets.iter_mut().zip(holes) {
+            *set = h.set();
+        }
+        let hands = &sets[..holes.len()];
         if to_deal == 0 {
-            acc.showdown(holes, board, weight);
+            acc.showdown(hands, board, weight);
         } else {
             for_each_combination(deck, to_deal, |extra| {
-                acc.showdown(holes, board | extra, weight);
+                acc.showdown(hands, board | extra, weight);
             });
         }
     }
@@ -386,7 +421,7 @@ impl ExactCtx<'_> {
         acc: &mut Acc,
     ) {
         if depth == self.combos.len() {
-            let deck: Vec<Card> = (!used).iter().collect();
+            let deck = singletons(!used);
             Self::leaf(holes, self.board, &deck, self.to_deal, weight, acc);
             return;
         }
@@ -456,7 +491,7 @@ fn monte_carlo(
                 .min(options.samples.saturating_sub(chunk * CHUNK))
                 .max(1);
             let mut acc = Acc::new(n);
-            let mut holes = Vec::with_capacity(n);
+            let mut hands = Vec::with_capacity(n);
             let mut attempts = 0u64;
             while acc.deals < target {
                 attempts += 1;
@@ -466,17 +501,17 @@ fn monte_carlo(
                 }
                 // Rejet de la distribution complète en cas de conflit : on échantillonne
                 // ainsi exactement la loi jointe des ranges pondérées.
-                holes.clear();
+                hands.clear();
                 let mut used = CardSet::EMPTY;
                 let mut ok = true;
                 for s in &samplers {
-                    let h = s.sample(&mut rng);
-                    if h.set().intersects(used) {
+                    let h = s.sample(&mut rng).set();
+                    if h.intersects(used) {
                         ok = false;
                         break;
                     }
-                    used |= h.set();
-                    holes.push(h);
+                    used |= h;
+                    hands.push(h);
                 }
                 if !ok {
                     continue;
@@ -490,7 +525,7 @@ fn monte_carlo(
                         dealt += 1;
                     }
                 }
-                acc.showdown(&holes, full, 1.0);
+                acc.showdown(&hands, full, 1.0);
             }
             acc
         })
