@@ -34,6 +34,13 @@ use crate::range::HoleCards;
 /// Nombre maximal de joueurs gérés par le moteur de règles.
 pub const MAX_PLAYERS: usize = 10;
 
+/// Plafond des jetons d'une main (somme des tapis, blindes, ante) : 2⁶², bien au-delà de
+/// toute partie réelle. Les montants en jeu étant bornés par la somme des tapis, les calculs
+/// de pots et de relances ne peuvent pas déborder, et les résultats nets tiennent dans un
+/// `i64`. Un historique corrompu peut annoncer des tapis démesurés : la main est alors
+/// refusée au lieu de déborder pendant la répartition des pots.
+pub const MAX_TOTAL_CHIPS: u64 = 1 << 62;
+
 /// Tour d'enchères.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -402,6 +409,20 @@ impl HandState {
         }
         if setup.stacks.iter().any(|s| s.is_zero()) {
             return invalid("un joueur servi a un tapis nul");
+        }
+        let total = setup
+            .stacks
+            .iter()
+            .try_fold(0u64, |acc, s| acc.checked_add(s.get()));
+        let ante = match setup.blinds.ante {
+            Ante::None => Chips::ZERO,
+            Ante::Classic(a) | Ante::BigBlind(a) => a,
+        };
+        if total.is_none_or(|t| t > MAX_TOTAL_CHIPS)
+            || setup.blinds.big_blind.get() > MAX_TOTAL_CHIPS
+            || ante.get() > MAX_TOTAL_CHIPS
+        {
+            return invalid("montants démesurés (au-delà de 2^62 jetons)");
         }
 
         let players = setup
@@ -1354,5 +1375,15 @@ mod tests {
         assert!(bad(vec![100, 100], 0, 3, 2));
         assert!(bad(vec![100, 0], 0, 1, 2));
         assert!(bad(vec![100, 100], 0, 0, 0));
+        // Montants démesurés (historique corrompu) : refusés plutôt que de déborder.
+        assert!(bad(vec![u64::MAX, 100], 0, 1, 2));
+        assert!(bad(vec![MAX_TOTAL_CHIPS, MAX_TOTAL_CHIPS], 0, 1, 2));
+        assert!(bad(vec![100, 100], 0, 1, u64::MAX));
+        assert!(!bad(
+            vec![MAX_TOTAL_CHIPS / 2, MAX_TOTAL_CHIPS / 2],
+            0,
+            1,
+            2
+        ));
     }
 }
