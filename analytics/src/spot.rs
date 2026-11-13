@@ -70,6 +70,36 @@ pub enum SpotError {
 /// La grosse blinde du spot reconstruit, en jetons.
 const BB: u64 = 100;
 
+/// Plus grand montant accepté, en BB : bien au-delà de toute partie réelle.
+pub const MAX_SPOT_BB: f32 = 100_000.0;
+
+/// Vérifie les montants saisis ou lus sur une image, avant de reconstruire le spot :
+/// « inf », « NaN » ou « 1e30 » passent la lecture d'un nombre, et finissaient en message
+/// incompréhensible (« montants démesurés (au-delà de 2^62 jetons) »).
+fn check_amounts(input: &SpotInput) -> Result<(), SpotError> {
+    let mut amounts = vec![("tapis effectif", input.effective_bb)];
+    if input.board.len() >= 3 {
+        amounts.push(("pot", input.pot_bb));
+        amounts.push(("montant à suivre", input.to_call_bb));
+    } else if let Situation::FacingRaise { raise_to_bb } = input.situation {
+        amounts.push(("relance", raise_to_bb));
+    }
+    for (what, value) in amounts {
+        if !value.is_finite() {
+            return Err(SpotError::Invalid(format!("{what} illisible")));
+        }
+        if value < 0.0 {
+            return Err(SpotError::Invalid(format!("{what} négatif ({value} BB)")));
+        }
+        if value > MAX_SPOT_BB {
+            return Err(SpotError::Invalid(format!(
+                "{what} démesuré ({value} BB, au plus {MAX_SPOT_BB} BB)"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn chips(bb: f32) -> u64 {
     (bb.max(0.0) * BB as f32).round() as u64
 }
@@ -235,6 +265,7 @@ fn build(input: &SpotInput) -> Result<(HandState, usize), SpotError> {
 
 /// Analyse un spot.
 pub fn analyse_spot(input: &SpotInput, samples: usize) -> Result<SpotAdvice, SpotError> {
+    check_amounts(input)?;
     let mut used = input.hole.set();
     for c in &input.board {
         if !used.insert(*c) {
@@ -365,6 +396,35 @@ mod tests {
             to_call_bb: 0.0,
             situation,
         }
+    }
+
+    #[test]
+    fn unreadable_amounts_get_a_clear_message() {
+        let message = |i: &SpotInput| analyse_spot(i, 200).unwrap_err().to_string();
+        let mut i = input(Position::Button, "AhKd", f32::INFINITY, Situation::Unopened);
+        assert_eq!(message(&i), "tapis effectif illisible");
+        i.effective_bb = f32::NAN;
+        assert_eq!(message(&i), "tapis effectif illisible");
+        i.effective_bb = -5.0;
+        assert_eq!(message(&i), "tapis effectif négatif (-5 BB)");
+        i.effective_bb = 1e30;
+        assert!(message(&i).starts_with("tapis effectif démesuré"));
+        i.effective_bb = 20.0;
+        i.situation = Situation::FacingRaise {
+            raise_to_bb: f32::NAN,
+        };
+        assert_eq!(message(&i), "relance illisible");
+        // Après le flop, le pot et le montant à suivre comptent ; avant, ils sont ignorés.
+        i.situation = Situation::Postflop { opponents: 1 };
+        i.pot_bb = f32::INFINITY;
+        assert!(analyse_spot(&i, 200).is_ok());
+        i.board = stratyx_poker::card::parse_cards("Qh7c2s").unwrap();
+        assert_eq!(message(&i), "pot illisible");
+        i.pot_bb = 6.0;
+        i.to_call_bb = -1.0;
+        assert_eq!(message(&i), "montant à suivre négatif (-1 BB)");
+        i.to_call_bb = 2.0;
+        assert!(analyse_spot(&i, 200).is_ok());
     }
 
     #[test]
