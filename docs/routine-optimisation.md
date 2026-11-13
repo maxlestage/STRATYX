@@ -418,3 +418,94 @@ déterministes ; trois défauts corrigés (débordement des pots, sièges incoh�
 - Temps de la vision sur une capture 4K (3 840 × 2 160) sur mobile : `detect_cards`
   réduit l'image d'abord, mais `Keyframer` et `read_corner` travaillent en pleine
   résolution.
+
+## 2026-11-13 — Itération 14 : vision, réduction d'image en une passe par ligne
+
+**Constat** (release, table synthétique, parcours de `/app`) : la reconnaissance est
+négligeable (0,05 ms), mais `detect_cards` passe **80 % de son temps** dans
+`Frame::downscale` (réduction à 640 px de large avant la détection) : 2,8 ms en 1 280 × 720,
+4,0 ms en 1 920 × 1 080, 10,7 ms en 3 840 × 2 160. L'ancien calcul, pixel de sortie par
+pixel de sortie, recalculait un index et bouclait octet par octet.
+
+**Changement** (`vision/src/frame.rs`) : la colonne de sortie de chaque colonne source est
+calculée une fois (mêmes bornes, donc même résultat), puis chaque ligne source est parcourue
+une seule fois, linéairement, en ajoutant ses pixels aux sommes de la ligne de sortie. Si un
+arrondi faisait se chevaucher deux boîtes (cas théorique), repli sur l'ancien calcul, gardé
+comme `downscale_per_pixel`. Test `downscale_matches_the_per_pixel_reference` : résultat
+identique octet pour octet sur 200 images et largeurs au hasard.
+
+**Mesures** (`downscale(640)`, meilleur de 5 × 20, A/B dans le même binaire) :
+
+| Image             | Avant   | Après   |
+| ----------------- | ------- | ------- |
+| 1 280 × 720       | 2,95 ms | 2,51 ms (−15 %) |
+| 1 920 × 1 080     | 4,09 ms | 3,32 ms (−19 %) |
+| 3 840 × 2 160     | 9,62 ms | 9,47 ms (≈) |
+
+Une variante par tranches de colonnes gagnait 28 % en 4K mais perdait 10 % en 720p ; les
+captures d'écran et vidéos d'écran courantes sont en 720p–1080p, d'où ce choix. En 4K, la
+lecture des 33 Mo de l'image domine probablement (bande passante mémoire).
+
+**Pistes suivantes.**
+
+- 4K : réduire par 2 pendant la capture côté navigateur (`drawImage` à taille réduite) avant
+  de passer l'image au WebAssembly, plutôt qu'en Rust.
+- Mesurer le vrai `pkg/stratyx_site_bg.wasm` (après `wasm-bindgen`) dans la CI du site.
+
+## 2026-11-13 — Itération 15 : la CI mesure le vrai bundle WebAssembly
+
+**Piste abandonnée.** Réduire les images 4K dans le navigateur avant la vision : c'est déjà
+le cas, `media::lire` réduit chaque image à la capture (`image_video(&video, 1280)`), une
+image 4K n'atteint jamais le Rust. L'ingestion dans la base locale, autre piste examinée, se
+fait déjà en une seule transaction par lot.
+
+**Changement** (`.github/workflows/ci.yml`) : nouveau job `bundle` qui construit le bundle
+exactement comme Heroku (`cargo build --profile wasm-release` puis `wasm-bindgen` à la
+version de `Cargo.lock`, comme `heroku-build.sh`) et publie dans le résumé du run la taille
+de `pkg/stratyx_site_bg.wasm` et `pkg/stratyx_site.js` : brute, gzip -9 et Brotli -q 11.
+Il comble l'angle mort de l'itération 9 (tailles mesurées sur le `.wasm` brut, faute de
+`wasm-bindgen` en local) et vérifie à chaque push que le bundle se construit, ce que la CI
+ne faisait pas (seul le lint WebAssembly tournait). Job informatif : `continue-on-error`,
+hors des dépendances de `merge`, il ne retarde ni ne bloque la fusion.
+
+Vérifié en local : YAML, dépendances de `merge` inchangées, extraction de la version
+(0.2.129) et script du rapport (sur un `.wasm` de substitution). Le téléchargement de
+`wasm-bindgen` n'a pas été exécuté ici : premier vrai passage en CI.
+
+**Pistes suivantes.**
+
+- Lire le résumé du premier run du job `bundle` et reporter ici les vraies tailles servies.
+
+## 2026-11-13 — Itération 16 : CI rouge depuis l'itération 14 (clippy de Rust 1.100), corrigée
+
+**Incident.** La CI des itérations 14 et 15 a échoué au lint sur les trois systèmes :
+le clippy de Rust 1.100 (celui de la CI, `dtolnay/rust-toolchain@stable`) refuse
+`chunks_exact(4)` à taille constante (`clippy::chunks_exact_to_as_chunks`), utilisé par la
+nouvelle réduction d'image de l'itération 14. Localement, la toolchain était restée en Rust
+1.97, qui ne connaît pas ce lint : les vérifications locales étaient vertes. Conséquence :
+ni l'itération 14 ni la 15 n'ont été fusionnées dans `master` (la fusion automatique exige une
+CI verte), rien de cassé n'a été déployé.
+
+**Correction.** `vision/src/frame.rs` : `as_chunks::<4>()` / `as_chunks_mut::<4>()`, et
+sommes en `[u32; 4]` par colonne (plus lisible). Toolchain locale mise à jour
+(`rustup update stable` → Rust 1.100, comme la CI) : fmt, clippy (workspace, site natif et
+WebAssembly), tests (296 + 16) et évaluateur exhaustif verts ; test d'identité de la
+réduction toujours vert.
+
+**Leçon pour la routine.** Mettre la toolchain à jour (`rustup update stable`) avant de
+vérifier, et contrôler le résultat de la CI de l'itération précédente en début d'itération.
+
+**Premier rapport du job `bundle`** (itération 15, Rust 1.100) — tailles réellement servies :
+
+| Fichier                | Brut      | gzip -9 | Brotli -q 11     |
+| ---------------------- | --------- | ------- | ---------------- |
+| `stratyx_site_bg.wasm` | 1 246 069 | 417 920 | 333 794 (−73 %)  |
+| `stratyx_site.js`      | 70 330    | 10 770  | 9 105 (−87 %)    |
+
+Le WebAssembly servi fait donc 1,25 Mo (et non 2,3 Mo, taille du `.wasm` brut avant
+`wasm-bindgen`), soit ~334 Ko transférés avec la compression de l'itération 9.
+
+**Pistes suivantes.**
+
+- Ce qui pèse dans les 1,25 Mo : code (~1 Mo) et données (~430 Ko) ; les modèles des IA
+  embarqués dans le WebAssembly (JSON) sont un candidat.

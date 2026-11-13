@@ -527,3 +527,27 @@ fn diagnose() {
         }
     }
 }
+
+#[test]
+fn downscale_matches_the_per_pixel_reference() {
+    // La réduction en une passe par ligne doit donner exactement l'ancien calcul pixel par
+    // pixel (gardé comme repli), sur des images et des largeurs cibles au hasard.
+    use rand::Rng;
+    let mut rng = ChaCha8Rng::seed_from_u64(11);
+    for _ in 0..200 {
+        let w = rng.random_range(1..1500u32);
+        let h = rng.random_range(1..300u32);
+        let rgba: Vec<u8> = (0..w * h * 4).map(|_| rng.random()).collect();
+        let f = Frame::new(w, h, rgba).unwrap();
+        let target = rng.random_range(1..w + 2);
+        let fast = f.downscale(target);
+        if target >= w {
+            assert_eq!(fast, f);
+            continue;
+        }
+        let nh = ((u64::from(h) * u64::from(target)) / u64::from(w)).max(1) as u32;
+        let reference =
+            f.downscale_per_pixel(target, nh, w as f32 / target as f32, h as f32 / nh as f32);
+        assert_eq!(fast, reference, "{w} × {h} → {target}");
+    }
+}
