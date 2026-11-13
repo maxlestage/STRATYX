@@ -151,6 +151,31 @@ fn straight_high(mask: u32) -> Option<u8> {
     if s == 0 { None } else { Some(highest(s) + 3) }
 }
 
+/// Masque des rangs de la couleur qui compte au moins cinq cartes, s'il y en a une.
+///
+/// Les quatre couleurs sont comptées d'un coup (« SWAR », un compteur par tranche de
+/// 16 bits du [`CardSet`]) : la cible x86-64 de base n'a pas l'instruction `popcnt`, et
+/// quatre `count_ones` y coûtaient près de 70 instructions par main. Au plus 7 cartes : une
+/// seule couleur peut en compter cinq.
+#[inline]
+fn flush_mask(bits: u64) -> Option<u32> {
+    const M1: u64 = 0x5555_5555_5555_5555;
+    const M2: u64 = 0x3333_3333_3333_3333;
+    const M4: u64 = 0x0F0F_0F0F_0F0F_0F0F;
+    const M8: u64 = 0x00FF_00FF_00FF_00FF;
+    let x = bits - ((bits >> 1) & M1);
+    let x = (x & M2) + ((x >> 2) & M2);
+    let x = (x + (x >> 4)) & M4; // cartes par octet
+    let x = (x + (x >> 8)) & M8; // cartes par couleur (au plus 13)
+    // Compteur + 11 ≥ 16 si et seulement si compteur ≥ 5 (sans débordement : 13 + 11 < 2¹⁶).
+    let five = (x + 0x000B_000B_000B_000B) & 0x0010_0010_0010_0010;
+    if five == 0 {
+        return None;
+    }
+    let suit = five.trailing_zeros() / 16;
+    Some(((bits >> (16 * suit)) & 0x1FFF) as u32)
+}
+
 /// Évalue la meilleure main de 5 cartes contenue dans un ensemble de 5 à 7 cartes.
 ///
 /// Au-delà de 7 cartes, le résultat n'est pas garanti (une couleur et un full pourraient
@@ -158,25 +183,27 @@ fn straight_high(mask: u32) -> Option<u8> {
 #[must_use]
 pub fn evaluate(cards: CardSet) -> HandRank {
     debug_assert!(cards.len() <= 7, "l'évaluateur accepte au plus 7 cartes");
+
+    // Avec 7 cartes au plus, une couleur exclut carré et full : on peut conclure tout de suite.
+    if let Some(m) = flush_mask(cards.bits()) {
+        if let Some(hi) = straight_high(m) {
+            return HandRank::pack(HandCategory::StraightFlush, &[hi]);
+        }
+        return HandRank::pack(HandCategory::Flush, &top::<5>(m));
+    }
+
     let c = u32::from(cards.suit_mask(Suit::Clubs));
     let d = u32::from(cards.suit_mask(Suit::Diamonds));
     let h = u32::from(cards.suit_mask(Suit::Hearts));
     let s = u32::from(cards.suit_mask(Suit::Spades));
-
-    // Avec 7 cartes au plus, une couleur exclut carré et full : on peut conclure tout de suite.
-    for m in [c, d, h, s] {
-        if m.count_ones() >= 5 {
-            if let Some(hi) = straight_high(m) {
-                return HandRank::pack(HandCategory::StraightFlush, &[hi]);
-            }
-            return HandRank::pack(HandCategory::Flush, &top::<5>(m));
-        }
-    }
-
-    let r1 = c | d | h | s; // rangs présents au moins une fois
-    let r2 = (c & d) | (c & h) | (c & s) | (d & h) | (d & s) | (h & s); // au moins deux fois
-    let r3 = (c & d & h) | (c & d & s) | (c & h & s) | (d & h & s); // au moins trois fois
-    let r4 = c & d & h & s; // quatre fois
+    // Multiplicités par paires de couleurs : un rang est présent au moins deux fois s'il
+    // l'est deux fois dans {♣, ♦}, deux fois dans {♥, ♠}, ou une fois dans chacune.
+    let (cd_both, cd_any) = (c & d, c | d);
+    let (hs_both, hs_any) = (h & s, h | s);
+    let r1 = cd_any | hs_any; // rangs présents au moins une fois
+    let r2 = cd_both | hs_both | (cd_any & hs_any); // au moins deux fois
+    let r3 = (cd_both & hs_any) | (hs_both & cd_any); // au moins trois fois
+    let r4 = cd_both & hs_both; // quatre fois
 
     if r4 != 0 {
         let q = highest(r4);
@@ -254,6 +281,40 @@ mod tests {
 
     fn rank_of(s: &str) -> HandRank {
         evaluate(CardSet::parse(s).unwrap())
+    }
+
+    #[test]
+    fn flush_mask_matches_naive_count() {
+        let naive = |cards: CardSet| {
+            Suit::ALL
+                .iter()
+                .map(|s| u32::from(cards.suit_mask(*s)))
+                .find(|m| m.count_ones() >= 5)
+        };
+        // Couleurs pleines et cas limites (4, 5 cartes), puis des milliers de mains au hasard.
+        for s in [
+            "",
+            "AsKsQsJs",
+            "AsKsQsJs2s",
+            "AsKsQsJsTs9s8s",
+            "2c3c4c5c6c7c8c",
+        ] {
+            let cards = CardSet::parse(s).unwrap();
+            assert_eq!(flush_mask(cards.bits()), naive(cards), "{s}");
+        }
+        for s in Suit::ALL {
+            let suit: CardSet = Rank::ALL.iter().map(|r| Card::new(*r, s)).collect();
+            assert_eq!(flush_mask(suit.bits()), naive(suit));
+        }
+        let mut rng = ChaCha8Rng::seed_from_u64(7);
+        let mut deck = CardSet::full_deck().to_vec();
+        for _ in 0..200_000 {
+            deck.shuffle(&mut rng);
+            for n in 0..=7 {
+                let cards: CardSet = deck[..n].iter().copied().collect();
+                assert_eq!(flush_mask(cards.bits()), naive(cards), "{cards:?}");
+            }
+        }
     }
 
     #[test]
