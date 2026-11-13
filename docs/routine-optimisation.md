@@ -359,3 +359,27 @@ nécessaire.
 - Mesurer le vrai `pkg/stratyx_site_bg.wasm` (après `wasm-bindgen`) dans la CI du site.
 - Les messages « pas de HJ à 2 joueurs » apparaissent quand la vision lit 0 ou 1 joueur
   (ramené à 2) : un message dédié (« nombre de joueurs illisible ») serait plus clair.
+
+## 2026-11-13 — Itération 12 : montants illisibles d'un spot, messages clairs
+
+**Constat.** Les montants d'un spot de `/app` viennent de champs saisis ou lus sur une
+image, convertis par `nombre()` (`site/src/capture.rs`) avec `str::parse::<f32>` : « inf »,
+« NaN », « 1e30 » ou « -5 » y passent. Ils finissaient en messages incompréhensibles, comme
+« situation de départ invalide : montants démesurés (au-delà de 2^62 jetons) » (le plafond de
+l'itération 7), ou étaient ramenés silencieusement à 0.
+
+**Changement** (`analytics/src/spot.rs`) : `analyse_spot` vérifie d'abord les montants qui
+comptent pour le spot (tapis effectif ; relance au préflop ; pot et montant à suivre après le
+flop) et répond « tapis effectif illisible », « montant à suivre négatif (-1 BB) » ou « pot
+démesuré (…, au plus 100000 BB) » (`MAX_SPOT_BB`). Test unitaire
+`unreadable_amounts_get_a_clear_message`. Le fuzzing de l'itération 11 tire désormais les
+montants absurdes une fois sur quatre seulement, pour que les spots plausibles restent
+représentés (garde-fou : au moins 100 spots analysés sur 1 500) ; 100 000 spots en local,
+aucune panique.
+
+**Piste abandonnée.** Le message « pas de HJ à 2 joueurs » quand 0 ou 1 joueur est lu : le
+site fixe le nombre de joueurs (3 en Expresso, 6 sinon), le cas est inatteignable.
+
+**Pistes suivantes.**
+
+- Mesurer le vrai `pkg/stratyx_site_bg.wasm` (après `wasm-bindgen`) dans la CI du site.

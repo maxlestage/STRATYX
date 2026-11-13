@@ -158,19 +158,14 @@ fn absurd_spots_never_panic() {
     use stratyx_poker::position::Position;
     use stratyx_poker::{Card, HoleCards, Specialist};
 
-    const AMOUNTS: &[f32] = &[
+    // Montants plausibles, et absurdes (une fois sur quatre) : les absurdes doivent être
+    // refusés avec un message, les plausibles aller au bout de l'analyse.
+    const PLAUSIBLE: &[f32] = &[0.0, 0.4, 1.0, 1.5, 2.5, 10.0, 37.3, 150.0];
+    const ABSURD: &[f32] = &[
         f32::NAN,
         f32::INFINITY,
         f32::NEG_INFINITY,
         -1.0,
-        0.0,
-        0.4,
-        1.0,
-        1.5,
-        2.5,
-        10.0,
-        37.3,
-        150.0,
         1e6,
         1e30,
         f32::MAX,
@@ -189,7 +184,14 @@ fn absurd_spots_never_panic() {
     ];
     let deck: Vec<Card> = Card::all().collect();
     let mut rng = ChaCha8Rng::seed_from_u64(0x5350_4F54);
-    let amount = |rng: &mut ChaCha8Rng| *AMOUNTS.choose(rng).expect("montant");
+    let amount = |rng: &mut ChaCha8Rng| {
+        let list = if rng.random_bool(0.25) {
+            ABSURD
+        } else {
+            PLAUSIBLE
+        };
+        *list.choose(rng).expect("montant")
+    };
     let mut failures = Vec::new();
     let mut analysed = 0usize;
     for round in 0..1_500 {
