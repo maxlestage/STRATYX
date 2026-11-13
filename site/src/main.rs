@@ -1872,6 +1872,10 @@ fn app() -> App {
         .render();
 
     let mut app = App::new();
+    // Brotli (ou gzip) pour le HTML, le CSS, le JavaScript et surtout le WebAssembly des
+    // îlots : le routeur d'Heroku ne compresse pas. Les fichiers statiques sont compressés
+    // une fois (niveau maximal) puis gardés en cache ; les pages, au niveau rapide.
+    app.middleware(middleware::compress());
     app.get("/", accueil);
     app.get("/fonctionnalites", fonctionnalites);
     app.get("/ia", les_ia);
@@ -2062,6 +2066,26 @@ mod export {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn les_reponses_sont_compressees() {
+        // Le routeur d'Heroku ne compresse pas : sans Brotli, le WebAssembly des îlots
+        // (~2,3 Mo) et les pages partaient tels quels.
+        let client = app().test().await;
+        let brut = client.get("/").await;
+        assert_eq!(brut.header("content-encoding"), None);
+        for (encodage, attendu) in [("br, gzip", "br"), ("gzip", "gzip")] {
+            let res = client.get("/").header("accept-encoding", encodage).await;
+            assert_eq!(res.status(), 200);
+            assert_eq!(res.header("content-encoding"), Some(attendu), "{encodage}");
+            assert!(
+                res.bytes().len() * 2 < brut.bytes().len(),
+                "{encodage} : {} octets pour {}",
+                res.bytes().len(),
+                brut.bytes().len()
+            );
+        }
+    }
 
     #[tokio::test]
     async fn chaque_page_repond() {
