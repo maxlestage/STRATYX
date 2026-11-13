@@ -73,5 +73,45 @@ Résultats identiques, y compris en Monte-Carlo à graine égale.
 - `evaluate` pèse désormais 67 % des instructions (~150 par main) : tables de 8 192 entrées
   calculées à la compilation (`const fn`) pour la quinte et les N meilleurs rangs d'un
   masque de 13 bits, à valider par le test exhaustif des 133 M mains (`--ignored`).
+  → itération 3 : la vraie cause était ailleurs (pas de `popcnt`), sans table.
 - `strategy/src/preflop.rs` : construction de la matrice préflop (temps, parallélisme).
 - Monte-Carlo : tirage du board par mélange partiel (Fisher-Yates) au lieu du rejet.
+
+## 2026-11-13 — Itération 3 : évaluateur sans `popcnt`
+
+**Constat.** Le désassemblage d'`evaluate` montre que la cible x86-64 de base n'a pas
+l'instruction `popcnt` : chacun des quatre `count_ones()` de la détection de couleur se
+compilait en ~18 instructions, soit ~70 par main avant même de regarder les paires.
+
+**Changements** (`poker/src/eval.rs`) :
+
+- `flush_mask` compte les cartes des quatre couleurs d'un coup sur le `u64` du `CardSet`
+  (« SWAR », un compteur par tranche de 16 bits), puis teste « au moins 5 » par une seule
+  addition et un masque. Test dédié contre le comptage naïf (couleurs pleines, cas
+  limites, 1,4 M mains au hasard de 0 à 7 cartes).
+- Multiplicités des rangs (au moins 2, 3, 4 fois) factorisées par paires de couleurs
+  ({♣, ♦} et {♥, ♠}) : 11 opérations au lieu de 25.
+- Toujours sans table précalculée. Le test exhaustif des 133 784 560 mains de 7 cartes
+  (`--ignored`) passe.
+
+**Mesures** (binaire release, meilleur de 15, avant = itération 2) :
+
+| Calcul                                      | Avant     | Après     |
+| ------------------------------------------- | --------- | --------- |
+| `AhKh QsQd`, 1 fil (instructions)           | 781 M     | 597 M     |
+| dont `evaluate`                             | 523 M     | 339 M     |
+| `AhKh QsQd`, 1 fil                          | 59,0 ms   | 46,9 ms   |
+| `AhKh QsQd JcTc 9d9c`, 1 fil                | 67,8 ms   | 50,6 ms   |
+| `AhKh QsQd`, 4 cœurs                        | 21,0 ms   | 16,4 ms   |
+| Monte-Carlo 3 ranges, 2 M tirages, 1 fil    | 267,9 ms  | 251,5 ms  |
+
+Depuis le début de la routine, `AhKh QsQd` : 78 ms → 16 ms (4 cœurs).
+
+**Pistes suivantes.**
+
+- Monte-Carlo : le coût est maintenant dans le tirage (ChaCha8, rejet des cartes déjà
+  prises, recherche dichotomique des combos pondérées) plus que dans l'évaluation :
+  profiler, puis mélange partiel (Fisher-Yates) du paquet restant.
+- `top::<N>` n'est pas toujours inliné (~8 % des instructions) : extraction des rangs par
+  `leading_zeros` déroulée.
+- `strategy/src/preflop.rs` : construction de la matrice préflop (temps, parallélisme).
