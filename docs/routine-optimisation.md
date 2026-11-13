@@ -300,9 +300,36 @@ sans `Accept-Encoding`), qui échoue sans le middleware.
 Décompression vérifiée identique au bit près (gzip et Brotli). Le WebAssembly compressé est
 servi en ~23 ms depuis le cache.
 
+> **Correction (itération 10).** Faute de `wasm-bindgen` en local, ces mesures ont été
+> faites sur le `.wasm` **brut** de `cargo build`, et non sur le fichier réellement servi
+> (`pkg/stratyx_site_bg.wasm`, produit par `wasm-bindgen`). Celui-ci est plus petit :
+> `wasm-bindgen` retire les 4 313 exports `__wbindgen_describe_*` (section export de
+> 250 Ko, et le code associé) et la section `__wasm_bindgen_unstable` (586 Ko). Le taux de
+> compression (~70 %) reste représentatif ; les octets absolus, non.
+
 **Pistes suivantes.**
 
 - Cache navigateur du bundle : `pkg/` est servi avec `max-age=0` (revalidation à chaque
   visite) ; un nom de fichier versionné permettrait un cache long.
 - Taille du WebAssembly lui-même (2,3 Mo) : voir ce qui pèse (`twiggy` n'est pas installé ;
   sections par crate via `cargo bloat --target wasm32`).
+
+## 2026-11-13 — Itération 10 : la page `/app` face aux historiques abîmés
+
+**Constat.** La page `/app` importe et analyse dans le navigateur les historiques que
+l'utilisateur dépose, en WebAssembly compilé avec `panic = "abort"` : la moindre panique dans
+l'import ou l'analyse ferait planter la page entière, sans message.
+
+**Changement.** Nouveau test `analytics/tests/robustesse.rs` qui suit exactement le parcours
+de la page : import, analyse de chaque main pour le héros saisi (vide, joueur de la table,
+inconnu, bruit), puis bilan de session (`SessionBuilder`). Sur les historiques intacts, il
+vérifie d'abord que l'analyse aboutit vraiment (décisions évaluées) ; puis 400 corruptions
+aléatoires par exécution (50 000 en local : aucune panique). Pas de correction nécessaire :
+les garde-fous des itérations 7 et 8 couvrent ce chemin.
+
+**Pistes suivantes.**
+
+- Mesurer le vrai `pkg/stratyx_site_bg.wasm` (après `wasm-bindgen`) : la CI du site pourrait
+  publier sa taille, compressée et non compressée, à chaque build.
+- Cache navigateur du bundle : `pkg/` est servi avec `max-age=0` (revalidation à chaque
+  visite).
