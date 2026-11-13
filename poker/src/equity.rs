@@ -11,7 +11,6 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::card::Card;
 use crate::cardset::CardSet;
 use crate::eval::evaluate;
 use crate::range::{HoleCards, Range};
@@ -437,35 +436,47 @@ impl ExactCtx<'_> {
 }
 
 /// Tirage pondéré dans une liste de combinaisons (recherche dichotomique sur les cumuls).
+///
+/// Les combinaisons sont gardées sous forme de [`CardSet`], seule forme qu'utilise le
+/// Monte-Carlo.
 struct WeightedCombos {
-    combos: Vec<HoleCards>,
+    combos: Vec<CardSet>,
     cumulative: Vec<f64>,
+    /// Tous les poids valent 1 (cas courant : range sans pondération). Les cumuls sont alors
+    /// les entiers 1, 2, 3… représentés exactement, et la recherche dichotomique se réduit à
+    /// la partie entière du tirage : même indice, donc mêmes résultats, sans la recherche.
+    unit: bool,
 }
 
 impl WeightedCombos {
     fn new(list: &[(HoleCards, f64)]) -> WeightedCombos {
         let mut total = 0.0;
-        let cumulative = list
+        let cumulative: Vec<f64> = list
             .iter()
             .map(|(_, w)| {
                 total += w;
                 total
             })
             .collect();
+        let unit = list.iter().all(|(_, w)| *w == 1.0);
         WeightedCombos {
-            combos: list.iter().map(|(h, _)| *h).collect(),
+            combos: list.iter().map(|(h, _)| h.set()).collect(),
             cumulative,
+            unit,
         }
     }
 
-    fn sample(&self, rng: &mut impl Rng) -> HoleCards {
+    #[inline]
+    fn sample(&self, rng: &mut impl Rng) -> CardSet {
         let total = *self.cumulative.last().expect("liste non vide");
         let x = rng.random::<f64>() * total;
-        let i = self
-            .cumulative
-            .partition_point(|c| *c <= x)
-            .min(self.combos.len() - 1);
-        self.combos[i]
+        let i = if self.unit {
+            // Nombre de cumuls k ≤ x parmi 1, 2, 3… : la partie entière de x (x ≥ 0).
+            x as usize
+        } else {
+            self.cumulative.partition_point(|c| *c <= x)
+        };
+        self.combos[i.min(self.combos.len() - 1)]
     }
 }
 
@@ -479,7 +490,7 @@ fn monte_carlo(
     const CHUNK: u64 = 4096;
     let n = combos.len();
     let samplers: Vec<WeightedCombos> = combos.iter().map(|c| WeightedCombos::new(c)).collect();
-    let deck: Vec<Card> = (!known).iter().collect();
+    let deck = singletons(!known);
     let chunks = options.samples.div_ceil(CHUNK).max(1);
 
     let acc = (0..chunks)
@@ -491,7 +502,7 @@ fn monte_carlo(
                 .min(options.samples.saturating_sub(chunk * CHUNK))
                 .max(1);
             let mut acc = Acc::new(n);
-            let mut hands = Vec::with_capacity(n);
+            let mut hands = [CardSet::EMPTY; MAX_PLAYERS];
             let mut attempts = 0u64;
             while acc.deals < target {
                 attempts += 1;
@@ -501,17 +512,16 @@ fn monte_carlo(
                 }
                 // Rejet de la distribution complète en cas de conflit : on échantillonne
                 // ainsi exactement la loi jointe des ranges pondérées.
-                hands.clear();
                 let mut used = CardSet::EMPTY;
                 let mut ok = true;
-                for s in &samplers {
-                    let h = s.sample(&mut rng).set();
+                for (s, hand) in samplers.iter().zip(&mut hands) {
+                    let h = s.sample(&mut rng);
                     if h.intersects(used) {
                         ok = false;
                         break;
                     }
                     used |= h;
-                    hands.push(h);
+                    *hand = h;
                 }
                 if !ok {
                     continue;
@@ -520,12 +530,12 @@ fn monte_carlo(
                 let mut dealt = 0;
                 while dealt < to_deal {
                     let c = deck[rng.random_range(0..deck.len())];
-                    if !used.contains(c) && !full.contains(c) {
-                        full.insert(c);
+                    if !c.intersects(used | full) {
+                        full |= c;
                         dealt += 1;
                     }
                 }
-                acc.showdown(&hands, full, 1.0);
+                acc.showdown(&hands[..n], full, 1.0);
             }
             acc
         })
@@ -665,6 +675,33 @@ mod tests {
         assert_eq!(mc.method, EquityMethod::MonteCarlo);
         let diff = (mc.players[0].equity - exact.players[0].equity).abs();
         assert!(diff < 5.0 * mc.players[0].std_error + 1e-3, "écart {diff}");
+    }
+
+    #[test]
+    fn unit_weights_shortcut_matches_binary_search() {
+        // Le raccourci des poids unitaires doit choisir exactement la même combinaison que la
+        // recherche dichotomique, tirage par tirage (sinon les résultats changeraient).
+        for range in ["random", "AhKh", "QQ+,AK", "22+,A2s+,KTo+"] {
+            let list: Vec<(HoleCards, f64)> =
+                r(range).iter().map(|(h, w)| (h, f64::from(w))).collect();
+            let fast = WeightedCombos::new(&list);
+            assert!(fast.unit, "{range}");
+            let slow = WeightedCombos {
+                unit: false,
+                combos: fast.combos.clone(),
+                cumulative: fast.cumulative.clone(),
+            };
+            let mut a = ChaCha8Rng::seed_from_u64(11);
+            let mut b = ChaCha8Rng::seed_from_u64(11);
+            for _ in 0..100_000 {
+                assert_eq!(fast.sample(&mut a), slow.sample(&mut b), "{range}");
+            }
+        }
+        let weighted: Vec<(HoleCards, f64)> = r("QQ+,AKo:0.5")
+            .iter()
+            .map(|(h, w)| (h, f64::from(w)))
+            .collect();
+        assert!(!WeightedCombos::new(&weighted).unit);
     }
 
     #[test]
