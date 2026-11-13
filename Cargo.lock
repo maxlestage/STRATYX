@@ -197,6 +197,10 @@ dependencies = [
 [[package]]
 name = "stratyx-ai-expresso"
 version = "0.1.0"
+dependencies = [
+ "stratyx-poker",
+ "stratyx-strategy",
+]
 
 [[package]]
 name = "stratyx-ai-inference"
@@ -205,14 +209,37 @@ version = "0.1.0"
 [[package]]
 name = "stratyx-ai-tournament"
 version = "0.1.0"
+dependencies = [
+ "stratyx-poker",
+ "stratyx-strategy",
+]
 
 [[package]]
 name = "stratyx-ai-training"
 version = "0.1.0"
+dependencies = [
+ "rand",
+ "rand_chacha",
+ "rayon",
+ "serde",
+ "serde_json",
+ "stratyx-poker",
+ "stratyx-shared",
+ "stratyx-strategy",
+]
 
 [[package]]
 name = "stratyx-analytics"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "stratyx-ai-expresso",
+ "stratyx-ai-tournament",
+ "stratyx-poker",
+ "stratyx-shared",
+ "stratyx-strategy",
+ "thiserror",
+]
 
 [[package]]
 name = "stratyx-capture"
@@ -222,6 +249,8 @@ version = "0.1.0"
 name = "stratyx-cli"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
+ "stratyx-analytics",
  "stratyx-poker",
  "stratyx-shared",
 ]
@@ -275,6 +304,15 @@ dependencies = [
 [[package]]
 name = "stratyx-strategy"
 version = "0.1.0"
+dependencies = [
+ "rand",
+ "rand_chacha",
+ "rayon",
+ "serde",
+ "serde_json",
+ "stratyx-poker",
+ "stratyx-shared",
+]
 
 [[package]]
 name = "stratyx-video"

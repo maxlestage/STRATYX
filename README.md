@@ -16,8 +16,14 @@ tournois, sit & go et Expresso.
 
 ## État
 
-Phase 1 en cours : le moteur poker (`poker/`) est opérationnel et testé. Les autres crates sont
-des squelettes qui matérialisent l'architecture.
+- Le moteur poker (`poker/`) est opérationnel et testé, avec l'import des historiques texte
+  PokerStars et Winamax.
+- Les deux IA existent en première version (phase 4) : équilibres push/fold, modèle de
+  décision et modèle de population, entraînés en Rust pur (voir
+  [`docs/entrainement.md`](docs/entrainement.md)).
+- L'analyse des mains après la partie (`analytics`) est livrée : `stratyx analyse` et la page
+  `/app` du site.
+- Les autres crates sont des squelettes qui matérialisent l'architecture.
 
 ## Démarrer
 
@@ -30,6 +36,11 @@ cargo run --release -p stratyx-cli -- eval AsKsQsJsTs9h2c
 cargo run --release -p stratyx-cli -- equity AhKh "QQ+,AKo" --board Qs7h2h
 cargo run --release -p stratyx-cli -- range "22+,A2s+,KTo+"
 cargo run --release -p stratyx-cli -- icm --stacks 5000,3000,2000 --payouts 50,30,20
+cargo run --release -p stratyx-cli -- analyse mes-mains.txt --joueur MonPseudo
+
+# Entraîner les modèles des deux IA (≈ 5 min sur 4 cœurs), avec vos propres historiques
+# rangés dans archives/expresso-3max/ et archives/tournois-6max/ :
+cargo run --release -p stratyx-ai-training --bin stratyx-train -- --archives archives
 ```
 
 ## Organisation
@@ -37,16 +48,19 @@ cargo run --release -p stratyx-cli -- icm --stacks 5000,3000,2000 --payouts 50,3
 | Crate | Rôle | Phase |
 |---|---|---|
 | `shared` | jetons, confiance, provenance des données | 1 ✅ |
-| `poker` | moteur Texas Hold'em : cartes, évaluation, ranges, équité, règles NL/PL/FL, formats, pots, historiques, ICM | 1 ✅ |
-| `tools/cli` | outil `stratyx` | 1 ✅ |
+| `poker` | moteur Texas Hold'em : cartes, évaluation, ranges, équité, règles NL/PL/FL, formats, pots, historiques, import des historiques texte, ICM | 1 ✅ |
+| `tools/cli` | outil `stratyx` (dont `stratyx analyse`) | 1 ✅ |
+| `strategy` | 169 classes, ranges adverses, équilibres push/fold, référence EV, modèles en Rust pur | 4 ✅ |
+| `ai/training` | `stratyx-train` : simulations, archives, apprentissage, rapport | 4 ✅ |
+| `ai/expresso_3max`, `ai/tournament_6max` | les modèles entraînés de chaque IA, embarqués | 4 ✅ |
+| `analytics` | analyse des mains après la partie (profils et statistiques à venir) | 5 🟡 |
 | `capture`, `video`, `vision` | capture d'écran, vidéo, reconnaissance | 2 |
 | `database` | quatre bases : Expresso, Tournois, Stratégie, Utilisateurs | 3 |
-| `ai/*`, `strategy` | IA Expresso 3-Max, IA Tournois 6-Max, entraînement, inférence | 4 |
-| `analytics` | analyse des mains, profils, statistiques | 5 |
+| `ai/inference` | exécution des modèles lourds sur CPU ou GPU (Burn) | 4 |
 | `coaching` | exercices, quiz, parcours | 6 |
 | `apps/*` | bureau, mobile, serveur et API | 7 |
 | `security` | chiffrement, authentification, RGPD | 8 |
-| `site` | site web en Rust (Paquets, WebAssembly) avec démos du moteur : voir [`site/README.md`](site/README.md) | — |
+| `site` | site web en Rust (Paquets, WebAssembly), PWA complète, dessins en Canvas 2D, démos du moteur et page d'analyse `/app` : voir [`site/README.md`](site/README.md) | — |
 
 ## Déployer le site depuis son téléphone (Heroku)
 

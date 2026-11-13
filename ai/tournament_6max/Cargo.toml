@@ -1,12 +1,14 @@
 [package]
 name = "stratyx-ai-tournament"
-description = "IA Tournois 6-Max : open/3-bet/4-bet, postflop, ICM, bulle, table finale, adaptation."
+description = "IA Tournois 6-Max : équilibre push/fold à 6 avec antes, modèle de décision et modèle de population entraînés sur archives et simulations."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+stratyx-poker.workspace = true
+stratyx-strategy.workspace = true
 
 [lints]
 workspace = true

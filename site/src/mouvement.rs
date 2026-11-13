@@ -1,10 +1,11 @@
 //! Les mouvements de la page, en Rust (navigateur seulement) : apparitions au défilement,
 //! compteurs, barre de progression, en-tête, frise, menu mobile, filtres, retour en haut,
-//! installation de la PWA, cartes inclinées, boutons magnétiques et curseur.
+//! PWA (service worker, mise à jour, hors ligne, installation), cartes qui se soulèvent,
+//! boutons magnétiques et curseur. Tout est en 2D.
 //!
 //! Lancé une fois par page par l'îlot `mouvement` (src/lib.rs), présent sur chaque page :
-//! une seule boucle d'animation (`paquets::three::animation_loop`) fait tout ce qui bouge
-//! image par image.
+//! une seule boucle d'animation (`crate::anim::boucle`) fait tout ce qui bouge image par
+//! image.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -14,7 +15,8 @@ use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{
     AddEventListenerOptions, Document, Element, Event, EventTarget, HtmlElement,
     IntersectionObserver, IntersectionObserverEntry, IntersectionObserverInit, KeyboardEvent,
-    MouseEvent, MutationObserver, MutationObserverInit, ScrollBehavior, ScrollToOptions, Window,
+    MouseEvent, MutationObserver, MutationObserverInit, ScrollBehavior, ScrollToOptions,
+    ServiceWorkerRegistration, ServiceWorkerState, Window,
 };
 
 thread_local! {
@@ -154,16 +156,17 @@ pub fn demarrer() {
     retour_en_haut(reduit);
     filtres();
     installation();
+    service_worker();
+    hors_ligne();
     if precis && !reduit {
         curseur(etat.clone());
-        cube_du_heros();
     }
 
     // La boucle : défilement, compteurs, nouveaux éléments, anneau du curseur.
     let anneau = un(".cursor-ring");
     let mut anneau_pos = (-100.0f64, -100.0f64);
     let mut dernier_y = 0.0f64;
-    let boucle = paquets::three::animation_loop(move |temps| {
+    let boucle = crate::anim::boucle(move |temps| {
         if etat.rescanner.replace(false) {
             scanner(&observateur, precis && !reduit);
         }
@@ -185,10 +188,7 @@ pub fn demarrer() {
             prop(
                 anneau,
                 "transform",
-                &format!(
-                    "translate3d({:.1}px, {:.1}px, 0)",
-                    anneau_pos.0, anneau_pos.1
-                ),
+                &format!("translate({:.1}px, {:.1}px)", anneau_pos.0, anneau_pos.1),
             );
         }
     });
@@ -394,7 +394,25 @@ fn filtres() {
     }
 }
 
-/// Le bouton « Installer l'application », montré quand le navigateur le propose.
+/// Montre ou cache un message de la PWA (`.toast-maj`, `.toast-hors-ligne`…).
+fn toast(selecteur: &str, oui: bool) {
+    for t in tous(selecteur, None) {
+        if let Some(h) = t.dyn_ref::<HtmlElement>() {
+            h.set_hidden(!oui);
+        }
+    }
+}
+
+/// Une propriété JavaScript booléenne (`navigator.standalone`…).
+fn vrai(objet: &JsValue, nom: &str) -> bool {
+    js_sys::Reflect::get(objet, &JsValue::from_str(nom))
+        .ok()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// Le bouton « Installer l'application », montré quand le navigateur le propose. Sur
+/// iPhone et iPad (pas d'invite d'installation), il explique comment faire.
 fn installation() {
     let invite: Rc<RefCell<Option<Event>>> = Rc::default();
     let montrer = |oui: bool| {
@@ -404,6 +422,20 @@ fn installation() {
             }
         }
     };
+    let installee = media("(display-mode: standalone)")
+        || media("(display-mode: window-controls-overlay)")
+        || vrai(&fenetre().navigator(), "standalone");
+    if installee {
+        if let Some(html) = document().document_element() {
+            classe(&html, "standalone", true);
+        }
+        return;
+    }
+    let agent = fenetre().navigator().user_agent().unwrap_or_default();
+    let ios = agent.contains("iPhone") || agent.contains("iPad") || agent.contains("iPod");
+    if ios {
+        montrer(true);
+    }
     let fenetre_cible: EventTarget = fenetre().into();
     {
         let invite = invite.clone();
@@ -414,7 +446,8 @@ fn installation() {
         });
     }
     ecouter(&fenetre_cible, "appinstalled", true, move |_| {
-        montrer(false)
+        montrer(false);
+        toast(".toast-ios", false);
     });
     for bouton in tous(".install-app", None) {
         let invite = invite.clone();
@@ -424,16 +457,136 @@ fn installation() {
                 && let Some(prompt) = prompt.dyn_ref::<js_sys::Function>()
             {
                 let _ = prompt.call0(&e);
+                montrer(false);
+            } else if ios {
+                toast(".toast-ios", true);
             }
-            montrer(false);
+        });
+    }
+    for fermer in tous("[data-toast-fermer]", None) {
+        let ce = fermer.clone();
+        ecouter(&fermer, "click", true, move |_| {
+            if let Some(t) = ce.closest(".toast").ok().flatten()
+                && let Some(h) = t.dyn_ref::<HtmlElement>()
+            {
+                h.set_hidden(true);
+            }
         });
     }
 }
 
-/// Une carte qui s'incline vers le pointeur, avec une lueur dessous.
+/// Enregistre le service worker (/sw.js) et propose la mise à jour quand une nouvelle
+/// version attend : le bouton lui demande de prendre la main, puis la page se recharge.
+fn service_worker() {
+    let navigateur = fenetre().navigator();
+    if !js_sys::Reflect::has(&navigateur, &JsValue::from_str("serviceWorker")).unwrap_or(false) {
+        return;
+    }
+    let conteneur = navigateur.service_worker();
+    let demandee = Rc::new(Cell::new(false));
+    {
+        let demandee = demandee.clone();
+        ecouter(
+            &conteneur.clone().into(),
+            "controllerchange",
+            true,
+            move |_| {
+                if demandee.get() {
+                    let _ = fenetre().location().reload();
+                }
+            },
+        );
+    }
+    let enregistrement: Rc<RefCell<Option<ServiceWorkerRegistration>>> = Rc::default();
+    for bouton in tous("[data-pwa-maj]", None) {
+        let enregistrement = enregistrement.clone();
+        let demandee = demandee.clone();
+        ecouter(&bouton, "click", true, move |_| {
+            let attente = enregistrement.borrow().as_ref().and_then(|r| r.waiting());
+            match attente {
+                Some(sw) => {
+                    demandee.set(true);
+                    let message = js_sys::Object::new();
+                    let _ = js_sys::Reflect::set(
+                        &message,
+                        &JsValue::from_str("type"),
+                        &JsValue::from_str("SKIP_WAITING"),
+                    );
+                    let _ = sw.post_message(&message);
+                }
+                None => {
+                    let _ = fenetre().location().reload();
+                }
+            }
+            toast(".toast-maj", false);
+        });
+    }
+    let suivre = Closure::<dyn FnMut(JsValue)>::new(move |valeur: JsValue| {
+        let Ok(reg) = valeur.dyn_into::<ServiceWorkerRegistration>() else {
+            return;
+        };
+        let controle = fenetre()
+            .navigator()
+            .service_worker()
+            .controller()
+            .is_some();
+        if reg.waiting().is_some() && controle {
+            toast(".toast-maj", true);
+        }
+        let r = reg.clone();
+        ecouter(&reg.clone().into(), "updatefound", true, move |_| {
+            let Some(nouveau) = r.installing() else {
+                return;
+            };
+            let n = nouveau.clone();
+            ecouter(&nouveau.into(), "statechange", true, move |_| {
+                if n.state() == ServiceWorkerState::Installed
+                    && fenetre()
+                        .navigator()
+                        .service_worker()
+                        .controller()
+                        .is_some()
+                {
+                    toast(".toast-maj", true);
+                }
+            });
+        });
+        // Une version plus récente ? On vérifie quand la page redevient visible.
+        let r = reg.clone();
+        ecouter(&document().into(), "visibilitychange", true, move |_| {
+            if document().visibility_state() == web_sys::VisibilityState::Visible {
+                let _ = r.update();
+            }
+        });
+        *enregistrement.borrow_mut() = Some(reg);
+    });
+    let _ = conteneur.register("/sw.js").then(&suivre);
+    suivre.forget();
+}
+
+/// Un message quand la connexion tombe (les outils continuent de marcher), et quand elle
+/// revient.
+fn hors_ligne() {
+    let fenetre_cible: EventTarget = fenetre().into();
+    if !fenetre().navigator().on_line() {
+        toast(".toast-hors-ligne", true);
+    }
+    ecouter(&fenetre_cible, "offline", true, move |_| {
+        toast(".toast-en-ligne", false);
+        toast(".toast-hors-ligne", true);
+    });
+    ecouter(&fenetre_cible, "online", true, move |_| {
+        toast(".toast-hors-ligne", false);
+        toast(".toast-en-ligne", true);
+        let rappel = Closure::once_into_js(|| toast(".toast-en-ligne", false));
+        let _ = fenetre()
+            .set_timeout_with_callback_and_timeout_and_arguments_0(rappel.unchecked_ref(), 3000);
+    });
+}
+
+/// Une carte qui se soulève au survol (en 2D), avec une lueur qui suit le pointeur.
 fn incliner(el: Element) {
     let _ = el.set_attribute("data-bound", "1");
-    let inclinable = el.class_list().contains("tilt");
     {
         let ce = el.clone();
         ecouter(&el, "pointermove", true, move |e| {
@@ -443,19 +596,8 @@ fn incliner(el: Element) {
             let y = (py - r.top()) / r.height().max(1.0);
             prop(&ce, "--mx", &format!("{:.1}%", x * 100.0));
             prop(&ce, "--my", &format!("{:.1}%", y * 100.0));
-            if inclinable {
-                classe(&ce, "tilting", true);
-                prop(&ce, "--rx", &format!("{:.2}deg", (0.5 - y) * 10.0));
-                prop(&ce, "--ry", &format!("{:.2}deg", (x - 0.5) * 12.0));
-            }
         });
     }
-    let ce = el.clone();
-    ecouter(&el, "pointerleave", true, move |_| {
-        classe(&ce, "tilting", false);
-        prop(&ce, "--rx", "0deg");
-        prop(&ce, "--ry", "0deg");
-    });
 }
 
 /// Un bouton attiré par le pointeur.
@@ -495,11 +637,7 @@ fn curseur(etat: Rc<Etat>) {
             let (x, y) = pointeur(&e);
             etat.souris.set((x, y));
             classe(&curseur, "on", true);
-            prop(
-                &point,
-                "transform",
-                &format!("translate3d({x}px, {y}px, 0)"),
-            );
+            prop(&point, "transform", &format!("translate({x}px, {y}px)"));
             let survol = e
                 .target()
                 .and_then(|t| t.dyn_into::<Element>().ok())
@@ -526,25 +664,5 @@ fn curseur(etat: Rc<Etat>) {
     }
     ecouter(&document().into(), "pointerleave", true, move |_| {
         classe(&curseur, "on", false)
-    });
-}
-
-/// Le cube CSS du héros s'écarte du pointeur.
-fn cube_du_heros() {
-    let Some(cube) = un(".hero-cube") else {
-        return;
-    };
-    ecouter(&fenetre().into(), "pointermove", true, move |e| {
-        let (x, y) = pointeur(&e);
-        let (w, h) = taille_fenetre();
-        prop(
-            &cube,
-            "translate",
-            &format!(
-                "{:.1}px {:.1}px",
-                (x / w - 0.5) * -40.0,
-                (y / h - 0.5) * -30.0
-            ),
-        );
     });
 }

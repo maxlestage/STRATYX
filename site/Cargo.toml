@@ -3,7 +3,7 @@ name = "stratyx-site"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Le site de STRATYX, écrit entièrement en Rust avec Paquets : pages SEO, PWA, scènes 3D et démos du moteur poker en WebAssembly."
+description = "Le site de STRATYX, écrit entièrement en Rust avec Paquets : pages SEO, PWA, dessins 2D et démos du moteur poker en WebAssembly."
 
 # Crate autonome : hors du workspace STRATYX (son audit `cargo deny` ne couvre que le
 # produit). Le site réutilise le moteur `stratyx-poker`, compilé aussi en WebAssembly.
@@ -20,6 +20,8 @@ path = "src/main.rs"
 [dependencies]
 stratyx-poker = { path = "../poker" }
 stratyx-shared = { path = "../shared" }
+stratyx-strategy = { path = "../strategy" }
+stratyx-analytics = { path = "../analytics" }
 
 # Serveur : Paquets sans SQLite ni PostgreSQL (aucune bibliothèque C) ; base en mémoire.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -34,11 +36,13 @@ js-sys = "0.3"
 # Le hasard de `rand` dans le navigateur (voir .cargo/config.toml).
 getrandom = { version = "0.3", features = ["wasm_js"] }
 web-sys = { version = "0.3", features = [
-  "AddEventListenerOptions", "CssStyleDeclaration", "Document", "DomRect", "DomTokenList",
-  "Element", "Event", "EventTarget", "HtmlElement", "IntersectionObserver",
-  "IntersectionObserverEntry", "IntersectionObserverInit", "KeyboardEvent", "MediaQueryList",
-  "MouseEvent", "MutationObserver", "MutationObserverInit", "NodeList", "Performance",
-  "PointerEvent", "ScrollBehavior", "ScrollToOptions", "Window",
+  "AddEventListenerOptions", "Blob", "CanvasGradient", "CanvasRenderingContext2d", "CssStyleDeclaration",
+  "Document", "DomRect", "File", "FileList", "FileReader", "DomTokenList", "Element", "Event", "EventTarget", "HtmlCanvasElement",
+  "HtmlElement", "HtmlInputElement", "IntersectionObserver", "IntersectionObserverEntry", "IntersectionObserverInit",
+  "KeyboardEvent", "Location", "MediaQueryList", "MouseEvent", "MutationObserver",
+  "MutationObserverInit", "Navigator", "NodeList", "Performance", "PointerEvent",
+  "ScrollBehavior", "ScrollToOptions", "ServiceWorker", "ServiceWorkerContainer",
+  "ServiceWorkerRegistration", "ServiceWorkerState", "UrlSearchParams", "VisibilityState", "Window",
 ] }
 
 [dev-dependencies]

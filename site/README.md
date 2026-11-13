@@ -2,13 +2,27 @@
 
 Le site web de STRATYX, écrit **entièrement en Rust** avec [Paquets](https://github.com/maxlestage/Paquets),
 sans une ligne de JavaScript écrite à la main : pages rendues sur le serveur avec leurs balises
-SEO, PWA installable et hors ligne, scènes 3D en WebAssembly (`paquets::three`), et le **vrai
-moteur `stratyx-poker`** compilé en WebAssembly pour les démos.
+SEO, PWA complète (installable, hors ligne, raccourcis, partage), dessins 2D en WebAssembly
+(Canvas 2D), le **vrai moteur `stratyx-poker`** compilé en WebAssembly pour les démos, et
+la page **Analyse** (`/app`) où les modèles entraînés des deux IA analysent vos mains dans
+le navigateur.
 
 ## Pages
 
-Accueil, Fonctionnalités, Les IA, Laboratoire, Technologie, Feuille de route, Fair-play,
-Contact, Mentions légales, Confidentialité, Plan du site, Merci, 404.
+Accueil, Analyse (`/app`), Fonctionnalités, Les IA, Laboratoire, Technologie, Feuille de
+route, Fair-play, Contact, Mentions légales, Confidentialité, Plan du site, Merci, Hors
+ligne, 404.
+
+## Analyse d'une partie (`/app`)
+
+L'îlot `analyse` (`src/analyse.rs`) lit un ou plusieurs historiques texte (PokerStars, Winamax
+et formats proches) collés, importés d'un fichier `.txt` ou partagés vers l'application
+installée. Chaque main est rejouée par le moteur, puis chaque décision du joueur est comparée
+à la référence de l'IA du format (`stratyx-analytics`) : équilibre push/fold ou référence EV,
+modèle de décision, tendances de la population, EV perdue, gravité, pistes de travail. Tout
+tourne en WebAssembly : rien n'est envoyé au serveur, et la page marche hors ligne (le
+service worker sert `/app` sans l'adresse complète d'un partage, voir la décision T12).
+
 
 Les textes viennent du cahier des charges et des décisions (`../docs/`) : rien d'inventé.
 Les mentions légales attendent les informations de l'éditeur (`src/contenu.rs`).
@@ -17,13 +31,35 @@ Les mentions légales attendent les informations de l'éditeur (`src/contenu.rs`
 
 | Îlot | Ce qu'il fait | Moteur |
 |---|---|---|
-| `table3d` | Table 3D (3, 6 ou 9 joueurs), main distribuée, flop/turn/river, évaluation et équité contre une main au hasard | `best_five`, `equity` |
+| `analyse` | Analyse d'une main collée, importée ou partagée : rejeu, référence, modèles des IA | `stratyx-analytics` |
+| `table2d` | Table vue de dessus en 2D (3, 6 ou 9 joueurs), main distribuée, flop/turn/river, évaluation et équité contre une main au hasard | `best_five`, `equity` |
 | `equite` | Équité de 2 ou 3 mains ou ranges, board facultatif, exact ou Monte-Carlo | `Range::parse`, `equity` |
 | `grille` | Grille des 169 mains, colorée en direct depuis une range | `Range`, `HandClass` |
 | `icm` | Équité ICM de chaque tapis selon les paiements | `icm_equities` |
-| `jetons` | Jetons qui tombent et s'empilent (physique) | `paquets::three::Physics` |
-| `hero3d` | Jetons et cartes en orbite, qui suivent le pointeur et le défilement | `paquets::three` |
+| `jetons` | Jetons qui tombent et s'empilent (physique 2D écrite en Rust) | `src/scenes.rs` |
+| `hero2d` | Jetons et cartes à plat qui flottent, suivent le pointeur et le défilement | Canvas 2D |
 | `mouvement` | Les mouvements de chaque page (apparitions, compteurs, curseur, menu…) | `web-sys` |
+
+## Application installable (PWA)
+
+Le site est une PWA complète, sans une ligne de JavaScript écrite à la main dans les pages :
+
+- **Manifeste** (`/manifest.webmanifest`, `src/pwa.rs`) : `id`, `scope`, icônes (dont
+  masquable et SVG), `display_override` (dont `window-controls-overlay`), raccourcis
+  (Analyser une partie, Laboratoire, Les IA), captures d'écran large et étroite,
+  `share_target` (un texte partagé depuis une autre application arrive sur `/app?texte=…`),
+  `launch_handler`.
+- **Service worker** (`/sw.js`) : chaque page du plan du site, `/app`, la page
+  `/hors-ligne`, la feuille de style, les icônes et le bundle WebAssembly sont gardés dès
+  l'installation ; les pages passent d'abord par le réseau, le reste est servi depuis le
+  cache et mis à jour derrière ; les polices Google sont gardées à part. La version du
+  cache est un hachage de ce qu'il garde : chaque déploiement installe un nouveau worker.
+- **Dans la page** (`src/mouvement.rs`, en Rust) : enregistrement du worker, message
+  « Nouvelle version disponible » avec mise à jour en un clic, messages hors ligne / en
+  ligne, bouton « Installer l'application » (et explication sur iPhone et iPad).
+
+Les captures d'écran du manifeste (`public/screenshots/`) et les icônes des raccourcis
+(`public/icons/raccourci-*.png`) sont faites avec Chromium sur le vrai site.
 
 ## Organisation
 
@@ -32,10 +68,16 @@ Les mentions légales attendent les informations de l'éditeur (`src/contenu.rs`
 | `src/main.rs` | Le serveur : mise en page, pages, liste d'attente, contact, PWA, sitemap |
 | `src/contenu.rs` | Tous les textes |
 | `src/lib.rs` | Les îlots (serveur et navigateur) et leurs calculs |
-| `src/scenes.rs` | Les scènes 3D (navigateur) |
+| `src/analyse.rs` | L'îlot de la page Analyse (`/app`) |
+| `src/scenes.rs` | Les scènes 2D en Canvas 2D (navigateur) |
+| `src/anim.rs` | La boucle d'animation (`requestAnimationFrame`) |
+| `src/pwa.rs` | La PWA : manifeste, service worker, balises du `<head>` |
 | `src/mouvement.rs` | Les mouvements des pages (navigateur) |
 | `src/icones.rs` | Les icônes SVG |
 | `public/` | Feuille de style, favicon, icônes de la PWA, image Open Graph |
+
+Le site réutilise les crates du produit : `stratyx-poker`, `stratyx-strategy` et
+`stratyx-analytics` (qui embarque les modèles de `ai/expresso_3max` et `ai/tournament_6max`).
 
 Le site est un crate autonome, exclu du workspace : l'audit `cargo deny` du produit reste
 inchangé. Paquets y est utilisé sans SQLite ni PostgreSQL (aucune bibliothèque C) : la base
