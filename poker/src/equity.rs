@@ -255,16 +255,101 @@ fn exact(
         board,
         to_deal,
     };
-    let acc = combos[0]
+    let acc = exact_tasks(combos, known, to_deal)
         .par_iter()
-        .map(|(h, w)| {
+        .map(|task| {
             let mut acc = Acc::new(n);
-            let mut holes = vec![*h];
-            ctx.rec(1, known | h.set(), *w, &mut holes, &mut acc);
+            let mut holes = task.holes.clone();
+            if holes.len() < n {
+                ctx.rec(holes.len(), task.used, task.weight, &mut holes, &mut acc);
+            } else {
+                let deck: Vec<Card> = (!task.used).iter().collect();
+                ExactCtx::leaf(
+                    &holes,
+                    board | task.extra,
+                    &deck[task.start..],
+                    task.to_deal,
+                    task.weight,
+                    &mut acc,
+                );
+            }
             acc
         })
         .reduce(|| Acc::new(n), Acc::merge);
     acc.finish(EquityMethod::Exact)
+}
+
+/// Nombre de tâches visé pour répartir l'énumération exacte sur tous les cœurs.
+const EXACT_TASKS: usize = 256;
+
+/// Une part de l'énumération exacte : les mains des premiers joueurs, et éventuellement les
+/// premières cartes du board à venir quand toutes les mains sont déjà fixées.
+#[derive(Debug, Clone)]
+struct ExactTask {
+    holes: Vec<HoleCards>,
+    used: CardSet,
+    weight: f64,
+    /// Cartes du board déjà fixées par le découpage, en plus du board connu.
+    extra: CardSet,
+    /// Indice, dans le paquet restant (`!used`), de la première carte encore tirable.
+    start: usize,
+    /// Cartes du board encore à distribuer.
+    to_deal: usize,
+}
+
+/// Découpe l'énumération exacte en au moins [`EXACT_TASKS`] tâches quand c'est possible.
+///
+/// Paralléliser sur les seules mains du premier joueur laissait un unique cœur au travail
+/// dès que celui-ci avait une main précise (« AhKh contre … », le cas le plus courant) : on
+/// fixe donc les mains joueur après joueur, puis, si cela ne suffit pas, les premières
+/// cartes du board, jusqu'à obtenir assez de tâches pour occuper tous les cœurs.
+fn exact_tasks(combos: &[Vec<(HoleCards, f64)>], known: CardSet, to_deal: usize) -> Vec<ExactTask> {
+    let mut tasks = vec![ExactTask {
+        holes: Vec::with_capacity(combos.len()),
+        used: known,
+        weight: 1.0,
+        extra: CardSet::EMPTY,
+        start: 0,
+        to_deal,
+    }];
+    for list in combos {
+        if tasks.len() >= EXACT_TASKS {
+            return tasks;
+        }
+        tasks = tasks
+            .into_iter()
+            .flat_map(|task| {
+                list.iter()
+                    .filter(move |(h, _)| !h.set().intersects(task.used))
+                    .map(move |(h, w)| {
+                        let mut next = task.clone();
+                        next.holes.push(*h);
+                        next.used |= h.set();
+                        next.weight *= w;
+                        next
+                    })
+            })
+            .collect();
+    }
+    // Toutes les mains sont fixées : on découpe les tirages du board par leurs premières
+    // cartes (les combinaisons sont énumérées dans l'ordre du paquet).
+    while tasks.len() < EXACT_TASKS && tasks.first().is_some_and(|t| t.to_deal > 0) {
+        tasks = tasks
+            .into_iter()
+            .flat_map(|task| {
+                let deck: Vec<Card> = (!task.used).iter().collect();
+                (task.start..=deck.len() - task.to_deal)
+                    .map(|i| ExactTask {
+                        extra: task.extra | CardSet::from_card(deck[i]),
+                        start: i + 1,
+                        to_deal: task.to_deal - 1,
+                        ..task.clone()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+    }
+    tasks
 }
 
 struct ExactCtx<'a> {
@@ -274,6 +359,24 @@ struct ExactCtx<'a> {
 }
 
 impl ExactCtx<'_> {
+    /// Abattages de toutes les façons de compléter `board` avec `to_deal` cartes de `deck`.
+    fn leaf(
+        holes: &[HoleCards],
+        board: CardSet,
+        deck: &[Card],
+        to_deal: usize,
+        weight: f64,
+        acc: &mut Acc,
+    ) {
+        if to_deal == 0 {
+            acc.showdown(holes, board, weight);
+        } else {
+            for_each_combination(deck, to_deal, |extra| {
+                acc.showdown(holes, board | extra, weight);
+            });
+        }
+    }
+
     fn rec(
         &self,
         depth: usize,
@@ -283,14 +386,8 @@ impl ExactCtx<'_> {
         acc: &mut Acc,
     ) {
         if depth == self.combos.len() {
-            if self.to_deal == 0 {
-                acc.showdown(holes, self.board, weight);
-            } else {
-                let deck: Vec<Card> = (!used).iter().collect();
-                for_each_combination(&deck, self.to_deal, |extra| {
-                    acc.showdown(holes, self.board | extra, weight);
-                });
-            }
+            let deck: Vec<Card> = (!used).iter().collect();
+            Self::leaf(holes, self.board, &deck, self.to_deal, weight, acc);
             return;
         }
         for (h, w) in &self.combos[depth] {
@@ -443,6 +540,62 @@ mod tests {
         .unwrap();
         assert_eq!(res.players[0].tie, 1.0);
         assert!((res.players[0].equity - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn exact_split_matches_sequential_enumeration() {
+        // Le découpage en tâches (mains, puis premières cartes du board) doit parcourir
+        // chaque distribution exactement une fois : on le compare à l'énumération séquentielle.
+        let cases = [
+            (vec![r("AhKh"), r("QsQd")], cs("2c7d9s")),
+            (vec![r("AhKh"), r("QsQd"), r("JcTc")], cs("2c7d9s")),
+            (vec![r("AhKh"), r("QQ+,AKo:0.5")], cs("Qs7h2h")),
+            (vec![r("KK+"), r("AKs"), r("98s")], cs("9h8h2c3d")),
+            (vec![r("AsAh"), r("KdKc")], cs("2c7d9sTh4s")),
+        ];
+        for (ranges, board) in cases {
+            let combos: Vec<Vec<(HoleCards, f64)>> = ranges
+                .iter()
+                .map(|r| {
+                    r.iter()
+                        .filter(|(h, _)| !h.set().intersects(board))
+                        .map(|(h, w)| (h, f64::from(w)))
+                        .collect()
+                })
+                .collect();
+            let to_deal = 5 - board.len();
+            let split = exact(&combos, board, board, to_deal).unwrap();
+            let ctx = ExactCtx {
+                combos: &combos,
+                board,
+                to_deal,
+            };
+            let mut acc = Acc::new(combos.len());
+            ctx.rec(0, board, 1.0, &mut Vec::new(), &mut acc);
+            let sequential = acc.finish(EquityMethod::Exact).unwrap();
+            assert_eq!(split.deals, sequential.deals);
+            for (a, b) in split.players.iter().zip(&sequential.players) {
+                assert!((a.equity - b.equity).abs() < 1e-12, "{a:?} {b:?}");
+                assert!((a.win - b.win).abs() < 1e-12, "{a:?} {b:?}");
+                assert!((a.tie - b.tie).abs() < 1e-12, "{a:?} {b:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn exact_tasks_fill_the_cores() {
+        // Deux mains précises avant le flop : le travail est découpé sur le board.
+        let combos = vec![
+            vec![("AhKh".parse::<HoleCards>().unwrap(), 1.0)],
+            vec![("QsQd".parse::<HoleCards>().unwrap(), 1.0)],
+        ];
+        let tasks = exact_tasks(&combos, CardSet::EMPTY, 5);
+        assert!(tasks.len() >= EXACT_TASKS, "{}", tasks.len());
+        let total: u64 = tasks
+            .iter()
+            .map(|t| binomial((48 - t.start) as u64, t.to_deal as u64))
+            .sum();
+        assert_eq!(total, 1_712_304);
     }
 
     #[test]
