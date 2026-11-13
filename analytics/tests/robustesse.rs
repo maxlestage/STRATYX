@@ -148,3 +148,105 @@ fn damaged_histories_never_panic() {
     }
     assert_none(&failures);
 }
+
+/// Analyse de spot (captures d'écran et vidéo de `/app`) : les montants viennent de la
+/// lecture d'images et peuvent être absurdes (`NaN`, infinis, négatifs, énormes), les cartes
+/// en double ou déjà dans la main. Erreur attendue, jamais de panique.
+#[test]
+fn absurd_spots_never_panic() {
+    use stratyx_analytics::spot::{Situation, SpotInput, analyse_spot};
+    use stratyx_poker::position::Position;
+    use stratyx_poker::{Card, HoleCards, Specialist};
+
+    const AMOUNTS: &[f32] = &[
+        f32::NAN,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        -1.0,
+        0.0,
+        0.4,
+        1.0,
+        1.5,
+        2.5,
+        10.0,
+        37.3,
+        150.0,
+        1e6,
+        1e30,
+        f32::MAX,
+    ];
+    const POSITIONS: &[Position] = &[
+        Position::UnderTheGun,
+        Position::UnderTheGun1,
+        Position::UnderTheGun2,
+        Position::UnderTheGun3,
+        Position::Lojack,
+        Position::Hijack,
+        Position::Cutoff,
+        Position::Button,
+        Position::SmallBlind,
+        Position::BigBlind,
+    ];
+    let deck: Vec<Card> = Card::all().collect();
+    let mut rng = ChaCha8Rng::seed_from_u64(0x5350_4F54);
+    let amount = |rng: &mut ChaCha8Rng| *AMOUNTS.choose(rng).expect("montant");
+    let mut failures = Vec::new();
+    let mut analysed = 0usize;
+    for round in 0..1_500 {
+        let a = *deck.choose(&mut rng).expect("carte");
+        let b = loop {
+            let b = *deck.choose(&mut rng).expect("carte");
+            if b != a {
+                break b;
+            }
+        };
+        // Board : 0 à 7 cartes au hasard, doublons et cartes de la main compris.
+        let board: Vec<Card> = (0..rng.random_range(0..=7))
+            .map(|_| *deck.choose(&mut rng).expect("carte"))
+            .collect();
+        let situation = match rng.random_range(0..4) {
+            0 => Situation::Unopened,
+            1 => Situation::FacingRaise {
+                raise_to_bb: amount(&mut rng),
+            },
+            2 => Situation::FacingAllIn,
+            _ => Situation::Postflop {
+                opponents: rng.random_range(0..=12),
+            },
+        };
+        let input = SpotInput {
+            specialist: *[
+                None,
+                Some(Specialist::Expresso3Max),
+                Some(Specialist::Tournament6Max),
+            ]
+            .choose(&mut rng)
+            .expect("spécialiste"),
+            players: rng.random_range(0..=12),
+            position: *POSITIONS.choose(&mut rng).expect("position"),
+            hole: HoleCards::new(a, b).expect("deux cartes distinctes"),
+            board,
+            effective_bb: amount(&mut rng),
+            pot_bb: amount(&mut rng),
+            to_call_bb: amount(&mut rng),
+            situation,
+        };
+        let shown = format!("{input:?}");
+        let outcome = catch_unwind(AssertUnwindSafe(|| analyse_spot(&input, 30)));
+        if matches!(outcome, Ok(Ok(_))) {
+            analysed += 1;
+        }
+        if let Err(e) = outcome {
+            let msg = e
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| e.downcast_ref::<&str>().map(|s| (*s).to_owned()))
+                .unwrap_or_default();
+            failures.push(format!("spot n° {round} : {msg}\n{shown}"));
+        }
+    }
+    assert_none(&failures);
+    // Garde-fou du test : une bonne part des spots va au bout de l'analyse (~14 %), le
+    // reste est refusé proprement (position impossible, carte en double, montant absurde).
+    assert!(analysed >= 100, "seulement {analysed} spots analysés");
+}
