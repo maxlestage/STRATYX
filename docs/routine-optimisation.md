@@ -418,3 +418,36 @@ déterministes ; trois défauts corrigés (débordement des pots, sièges incoh�
 - Temps de la vision sur une capture 4K (3 840 × 2 160) sur mobile : `detect_cards`
   réduit l'image d'abord, mais `Keyframer` et `read_corner` travaillent en pleine
   résolution.
+
+## 2026-11-13 — Itération 14 : vision, réduction d'image en une passe par ligne
+
+**Constat** (release, table synthétique, parcours de `/app`) : la reconnaissance est
+négligeable (0,05 ms), mais `detect_cards` passe **80 % de son temps** dans
+`Frame::downscale` (réduction à 640 px de large avant la détection) : 2,8 ms en 1 280 × 720,
+4,0 ms en 1 920 × 1 080, 10,7 ms en 3 840 × 2 160. L'ancien calcul, pixel de sortie par
+pixel de sortie, recalculait un index et bouclait octet par octet.
+
+**Changement** (`vision/src/frame.rs`) : la colonne de sortie de chaque colonne source est
+calculée une fois (mêmes bornes, donc même résultat), puis chaque ligne source est parcourue
+une seule fois, linéairement, en ajoutant ses pixels aux sommes de la ligne de sortie. Si un
+arrondi faisait se chevaucher deux boîtes (cas théorique), repli sur l'ancien calcul, gardé
+comme `downscale_per_pixel`. Test `downscale_matches_the_per_pixel_reference` : résultat
+identique octet pour octet sur 200 images et largeurs au hasard.
+
+**Mesures** (`downscale(640)`, meilleur de 5 × 20, A/B dans le même binaire) :
+
+| Image             | Avant   | Après   |
+| ----------------- | ------- | ------- |
+| 1 280 × 720       | 2,95 ms | 2,51 ms (−15 %) |
+| 1 920 × 1 080     | 4,09 ms | 3,32 ms (−19 %) |
+| 3 840 × 2 160     | 9,62 ms | 9,47 ms (≈) |
+
+Une variante par tranches de colonnes gagnait 28 % en 4K mais perdait 10 % en 720p ; les
+captures d'écran et vidéos d'écran courantes sont en 720p–1080p, d'où ce choix. En 4K, la
+lecture des 33 Mo de l'image domine probablement (bande passante mémoire).
+
+**Pistes suivantes.**
+
+- 4K : réduire par 2 pendant la capture côté navigateur (`drawImage` à taille réduite) avant
+  de passer l'image au WebAssembly, plutôt qu'en Rust.
+- Mesurer le vrai `pkg/stratyx_site_bg.wasm` (après `wasm-bindgen`) dans la CI du site.
