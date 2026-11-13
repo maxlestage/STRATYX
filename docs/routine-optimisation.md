@@ -383,3 +383,38 @@ site fixe le nombre de joueurs (3 en Expresso, 6 sinon), le cas est inatteignabl
 **Pistes suivantes.**
 
 - Mesurer le vrai `pkg/stratyx_site_bg.wasm` (après `wasm-bindgen`) dans la CI du site.
+
+## 2026-11-13 — Itération 13 : vision face aux images quelconques ; confiance `NaN` jamais certaine
+
+**Démarche.** Dernier maillon de `/app` : la vision (`vision/`), qui lit dans le navigateur
+des captures et des vidéos de taille et de contenu arbitraires (WebAssembly,
+`panic = "abort"`). Nouveau test `vision/tests/robustesse.rs` :
+
+- 300 images au hasard par exécution (10 000 en local) : tailles dégénérées (1×1, 1×300,
+  1 500×2…), aplats, bruit, rectangles clairs pris pour des cartes (parfois coupés par le
+  bord), taille qui change d'une trame à l'autre pour `Keyframer` ; parcours complet de la
+  page (images clés, `detect_cards`, `arrange`, `recognize`) et `crop` / `read_corner` /
+  `downscale` sur des rectangles quelconques (0, hors image, `u32::MAX`). Garde-fou : des
+  cartes sont bien détectées. **Aucune panique.**
+- Modèles appris relus depuis le stockage du navigateur mais incohérents (grilles de
+  mauvaise taille, rang 200, couleur 9, aspects démesurés) : aucune panique, confiance
+  toujours dans `[0, 1]`.
+
+**Trouvé en lisant le code.** `Recognized::confidence()` bornait la confiance brute puis,
+si elle restait invalide (`NaN`, seul cas possible après le bornage), renvoyait
+`Confidence::CERTAIN` : une lecture douteuse aurait été déclarée certaine, et aurait échappé
+au seuil de vérification (0,95) sous lequel l'utilisateur est invité à confirmer la carte.
+Elle vaut désormais 0. Test `an_unreadable_confidence_is_never_certain`, qui échoue sans le
+correctif. (Pas de `NaN` observé depuis de vraies images : correctif défensif.)
+
+**Bilan de la robustesse de `/app`** (itérations 7 à 13) : import texte, analyse des mains,
+bilan de session, analyse de spot et vision sont couverts par des tests de fuzzing
+déterministes ; trois défauts corrigés (débordement des pots, sièges incohérents, confiance
+`NaN`), un message d'erreur clarifié.
+
+**Pistes suivantes.**
+
+- Mesurer le vrai `pkg/stratyx_site_bg.wasm` (après `wasm-bindgen`) dans la CI du site.
+- Temps de la vision sur une capture 4K (3 840 × 2 160) sur mobile : `detect_cards`
+  réduit l'image d'abord, mais `Keyframer` et `read_corner` travaillent en pleine
+  résolution.
