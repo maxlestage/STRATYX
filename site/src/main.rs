@@ -1167,6 +1167,33 @@ async fn laboratoire(_req: Request) -> Page {
     )
 }
 
+/// La page /app, avec ses autorisations : capture de l'écran et caméra (pour filmer une
+/// session et l'analyser après), lecture des vidéos et images choisies sur l'appareil
+/// (`blob:`). Le reste du site garde la politique la plus stricte.
+async fn page_app(req: Request) -> Response {
+    let mut res = analyser_partie(req).await.into_response();
+    if let Some(csp) = res.get_header("content-security-policy").map(str::to_owned) {
+        res.set_header(
+            "content-security-policy",
+            csp.replacen(
+                "default-src 'self';",
+                "default-src 'self'; media-src 'self' blob:;",
+                1,
+            )
+            .replacen(
+                "img-src 'self' data: https:;",
+                "img-src 'self' data: blob: https:;",
+                1,
+            ),
+        );
+    }
+    res.set_header(
+        "permissions-policy",
+        "accelerometer=(), autoplay=(self), camera=(self), display-capture=(self), encrypted-media=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), screen-wake-lock=(self), usb=(), xr-spatial-tracking=()",
+    );
+    res
+}
+
 async fn analyser_partie(_req: Request) -> Page {
     // Le texte partagé (/app?texte=… ou /app#texte=…) n'est jamais lu par le serveur : le
     // service worker sert la page sans l'adresse complète et l'îlot le lit dans le
@@ -1215,11 +1242,35 @@ async fn analyser_partie(_req: Request) -> Page {
             section()
                 .class("section")
                 .id("analyse")
-                .child(div().class("container").child(island(
-                    "analyse",
-                    "",
-                    stratyx_site::analyse::analyse,
-                )))
+                .child(
+                    div()
+                        .class("container")
+                        .child(
+                            nav()
+                                .class("chips app-tabs")
+                                .attr("aria-label", "Sources")
+                                .child(a().class("chip").href("#analyse").text("Historiques de mains"))
+                                .child(a().class("chip").href("#video").text("Vidéo et captures d'écran")),
+                        )
+                        .child(island("analyse", "", stratyx_site::analyse::analyse)),
+                )
+                .into(),
+            section()
+                .class("section section-alt")
+                .id("video")
+                .child(
+                    div()
+                        .class("container")
+                        .child(titre_section(
+                            "Vidéo et captures",
+                            "Filmez, puis *analysez*",
+                            "Filmez votre écran pendant la session (ou importez une vidéo, des captures d'écran) : à l'arrêt, STRATYX retrouve vos cartes et le board, et l'IA de votre format analyse chaque spot. Rien n'est affiché pendant la partie, et rien ne quitte votre appareil.",
+                        ))
+                        .child(island("capture", "", stratyx_site::capture::capture))
+                        .child(p().class("fine center").text(
+                            "Le plus fiable reste l'historique de mains de votre salle (Winamax et PokerStars l'enregistrent sur votre ordinateur) : il contient toutes les actions et tous les montants.",
+                        )),
+                )
                 .into(),
             etapes.into(),
             appel_final(),
@@ -1825,7 +1876,7 @@ fn app() -> App {
     app.get("/fonctionnalites", fonctionnalites);
     app.get("/ia", les_ia);
     app.get("/laboratoire", laboratoire);
-    app.get("/app", analyser_partie);
+    app.get("/app", page_app);
     app.get("/technologie", technologie);
     app.get("/feuille-de-route", feuille_de_route);
     app.get("/fair-play", fair_play);
@@ -2048,6 +2099,25 @@ mod tests {
         for ile in ["equite", "grille", "icm", "jetons"] {
             assert!(labo.contains(&format!("data-island=\"{ile}\"")), "{ile}");
         }
+    }
+
+    #[tokio::test]
+    async fn seule_la_page_app_ouvre_la_camera_et_la_capture() {
+        let client = app().test().await;
+        let res = client.get("/app").await;
+        assert_eq!(res.status(), 200);
+        let html = res.text();
+        assert!(html.contains("data-island=\"capture\""));
+        assert!(html.contains("data-island=\"analyse\""));
+        let politique = res.header("permissions-policy").unwrap_or_default();
+        assert!(politique.contains("display-capture=(self)"), "{politique}");
+        assert!(politique.contains("camera=(self)"));
+        assert!(politique.contains("microphone=()"));
+        let csp = res.header("content-security-policy").unwrap_or_default();
+        assert!(csp.contains("media-src 'self' blob:"), "{csp}");
+        let accueil = client.get("/").await;
+        let politique = accueil.header("permissions-policy").unwrap_or_default();
+        assert!(politique.contains("camera=()") && politique.contains("display-capture=()"));
     }
 
     #[test]

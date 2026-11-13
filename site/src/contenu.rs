@@ -194,9 +194,9 @@ pub const PHASES: [(u8, &str, &str, &str, f32); 8] = [
     (
         2,
         "Capture vidéo et reconnaissance",
-        "À venir",
-        "Capture d'écran par les API système, import vidéo sans FFmpeg, vision avec score de confiance.",
-        0.0,
+        "Commencée",
+        "Dans le navigateur : capture de l'écran ou caméra, import de vidéos et de captures, détection et reconnaissance des cartes avec calibration et confiance. À venir : lecture des tapis, mises et actions, capture native.",
+        0.3,
     ),
     (
         3,

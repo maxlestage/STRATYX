@@ -4,6 +4,7 @@
 //! marche aussi hors ligne, dans l'application installée.
 
 use paquets::prelude::*;
+use stratyx_analytics::session::{SessionBuilder, SessionReport};
 use stratyx_analytics::{
     AnalysisError, DecisionReview, HandAnalysis, ImportedHand, Options, Severity, bb, import_text,
     pct,
@@ -444,6 +445,218 @@ fn lire_fichier(e: &paquets::active::Event, cible: State<String>, apres: impl Fn
     }
 }
 
+/// Analyse toute la session par petits morceaux (la page reste fluide) ; `progression`
+/// suit l'avancement, `bilan` reçoit le résultat.
+fn analyser_session(
+    mains: State<Vec<ImportedHand>>,
+    joueur: State<String>,
+    bilan: State<Option<SessionReport>>,
+    progression: State<Option<(usize, usize)>>,
+) {
+    fn etape(
+        i: usize,
+        mut b: SessionBuilder,
+        mains: State<Vec<ImportedHand>>,
+        joueur: State<String>,
+        bilan: State<Option<SessionReport>>,
+        progression: State<Option<(usize, usize)>>,
+    ) {
+        let total = mains.with(Vec::len);
+        let fin = (i + 4).min(total);
+        let options = Options {
+            samples: 900,
+            ..Options::default()
+        };
+        let nom = joueur.get();
+        mains.with(|m| {
+            for (k, h) in m.iter().enumerate().take(fin).skip(i) {
+                let hero = if nom.trim().is_empty() {
+                    h.hero.as_deref()
+                } else {
+                    Some(nom.trim())
+                };
+                match stratyx_analytics::analyse(&h.record, hero, &options) {
+                    Ok(a) => b.add(k, &h.record, &a),
+                    Err(_) => b.skip(),
+                }
+            }
+        });
+        if fin >= total {
+            progression.set(None);
+            bilan.set(Some(b.finish()));
+        } else {
+            progression.set(Some((fin, total)));
+            plus_tard(move || etape(fin, b, mains, joueur, bilan, progression));
+        }
+    }
+    bilan.set(None);
+    progression.set(Some((0, mains.with(Vec::len))));
+    plus_tard(move || etape(0, SessionBuilder::new(), mains, joueur, bilan, progression));
+}
+
+fn kpi(valeur: String, libelle: &str) -> Element {
+    div()
+        .class("kpi")
+        .child(strong().text(valeur))
+        .child(span().text(libelle.to_owned()))
+}
+
+/// Le bilan de session.
+fn rendu_bilan(r: &SessionReport, ouvrir: impl Fn(usize) + Copy + 'static) -> Vec<Node> {
+    let mut out: Vec<Node> = Vec::new();
+    out.push(
+        div()
+            .class("card bilan-head")
+            .child(p().class("eyebrow").text(format!(
+                "Bilan de session · {} · {}",
+                r.hero,
+                r.formats
+                    .iter()
+                    .map(|(f, n)| format!("{f} ({n})"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )))
+            .child(
+                div()
+                    .class("kpis")
+                    .child(kpi(format!("{}", r.analysed), "mains analysées"))
+                    .child(kpi(format!("{:.0}/100", r.average_score), "note moyenne"))
+                    .child(kpi(bb(r.ev_lost_per_100), "EV perdue / 100 mains"))
+                    .child(kpi(
+                        format!(
+                            "{}{}",
+                            if r.result_bb >= 0.0 { "+" } else { "−" },
+                            bb(r.result_bb.abs())
+                        ),
+                        "résultat (ne juge pas les décisions)",
+                    )),
+            )
+            .child(
+                div()
+                    .class("kpis small")
+                    .child(kpi(format!("{}", r.by_severity[0]), "bons choix"))
+                    .child(kpi(format!("{}", r.by_severity[1]), "imprécisions"))
+                    .child(kpi(format!("{}", r.by_severity[2]), "erreurs"))
+                    .child(kpi(format!("{}", r.by_severity[3]), "grosses erreurs")),
+            )
+            .into(),
+    );
+    out.push(
+        div()
+            .class("card priorites")
+            .child(h3().text("Vos priorités pour gagner plus"))
+            .child(
+                ol().class("checks")
+                    .children(r.priorities.iter().map(|t| li().text(t.clone()))),
+            )
+            .child(p().class("fine").text(if r.pushfold_decisions > 0 {
+                format!(
+                    "Push/fold : {} des {} décisions à tapis court suivent l'équilibre.",
+                    pct(r.pushfold_followed),
+                    r.pushfold_decisions
+                )
+            } else {
+                "Aucune décision push/fold dans cette session.".to_owned()
+            }))
+            .into(),
+    );
+    out.push(
+        div()
+            .class("card")
+            .child(h3().text("Statistiques et repères"))
+            .child(div().class("bench").children(r.benchmarks.iter().map(|b| {
+                let echelle = if b.name.contains("Agression") { 6.0 } else { 1.0 };
+                let pos = |x: f32| (x / echelle * 100.0).clamp(0.0, 100.0);
+                let val = if b.name.contains("Agression") {
+                    format!("{:.1}", b.value).replace('.', ",")
+                } else {
+                    pct(b.value)
+                };
+                div()
+                    .class("bench-row")
+                    .child(p().class("bench-head").child(strong().text(b.name.clone())).child(span().text(val)))
+                    .child(
+                        div()
+                            .class("bench-track")
+                            .child(div().class("bench-zone").attr(
+                                "style",
+                                format!("left:{:.1}%;width:{:.1}%", pos(b.low), pos(b.high) - pos(b.low)),
+                            ))
+                            .child(div().class(if b.advice.is_some() { "bench-dot off" } else { "bench-dot" }).attr("style", format!("left:{:.1}%", pos(b.value)))),
+                    )
+                    .child(p().class("fine").text(b.advice.clone().unwrap_or_else(|| "Dans la plage habituelle du format.".to_owned())))
+            })))
+            .child(p().class("fine").text(format!(
+                "Abattage après le flop : {} · tapis préflop : {} des mains jouées. Plages indicatives, fiables à partir de quelques centaines de mains.",
+                pct(r.stats.went_to_showdown),
+                pct(r.stats.preflop_all_in)
+            )))
+            .into(),
+    );
+    if !r.leaks.is_empty() {
+        out.push(
+            div()
+                .class("card leaks")
+                .child(h3().text("Fuites, de la plus coûteuse à la moins coûteuse"))
+                .children(r.leaks.iter().map(|l| {
+                    div()
+                        .class("leak")
+                        .child(
+                            p().class("leak-head")
+                                .child(strong().text(l.title.clone()))
+                                .child(span().text(format!(
+                                    "{} fois · {} perdues",
+                                    l.count,
+                                    bb(l.ev_lost_bb)
+                                ))),
+                        )
+                        .child(p().class("muted").text(l.advice.clone()))
+                        .child(
+                            div()
+                                .class("chips")
+                                .children(l.examples.iter().map(|(h, _)| {
+                                    let h = *h;
+                                    button()
+                                        .class("chip")
+                                        .attr("type", "button")
+                                        .on_click(move |_| ouvrir(h))
+                                        .text(format!("Voir la main {}", h + 1))
+                                })),
+                        )
+                }))
+                .into(),
+        );
+    }
+    if !r.costly.is_empty() {
+        out.push(
+            div()
+                .class("card costly")
+                .child(h3().text("Les décisions les plus coûteuses"))
+                .child(ol().class("costly-list").children(r.costly.iter().map(|c| {
+                    let h = c.hand;
+                    li().child(
+                        button()
+                            .class("costly-item")
+                            .attr("type", "button")
+                            .on_click(move |_| ouvrir(h))
+                            .child(span().class(classe_gravite(c.severity)).text(bb(c.loss_bb)))
+                            .child(span().text(format!(
+                                "Main {} · {} · {} {} : {} au lieu de {}",
+                                c.hand + 1,
+                                c.cards,
+                                rue(c.street),
+                                c.position,
+                                c.played,
+                                c.best
+                            ))),
+                    )
+                })))
+                .into(),
+        );
+    }
+    out
+}
+
 /// L'îlot : formulaire, liste des mains, analyse.
 pub fn analyse(props: &str) -> Node {
     let texte = use_state(props.to_owned());
@@ -455,6 +668,8 @@ pub fn analyse(props: &str) -> Node {
         "Collez un ou plusieurs historiques (PokerStars, Winamax…), importez un fichier .txt, ou essayez un exemple.",
     ));
     let calcul = use_state(false);
+    let bilan: State<Option<SessionReport>> = use_state(None);
+    let progression: State<Option<(usize, usize)>> = use_state(None);
 
     let analyser_index = move |i: usize| {
         calcul.set(true);
@@ -470,6 +685,7 @@ pub fn analyse(props: &str) -> Node {
         let n = rapport.hands.len();
         let erreurs = rapport.errors.len();
         mains.set(rapport.hands);
+        bilan.set(None);
         if n == 0 {
             resultat.set(Resultat::Erreur(rapport.errors.first().map_or_else(
                 || "Aucune main reconnue.".to_owned(),
@@ -569,6 +785,30 @@ pub fn analyse(props: &str) -> Node {
                 )
                 .child(p().class("tool-info").attr("aria-live", "polite").text_dyn(move || message.get())),
         )
+        .child(div().class("session-bar").children_dyn(move || {
+            let n = mains.with(Vec::len);
+            if n < 2 {
+                return Vec::new();
+            }
+            vec![
+                Node::from(
+                    button()
+                        .class("btn btn-primary magnetic")
+                        .attr("type", "button")
+                        .bool_attr("disabled", move || progression.get().is_some())
+                        .on_click(move |_| analyser_session(mains, joueur, bilan, progression))
+                        .text(format!("Analyser toute la session ({n} mains)")),
+                ),
+                Node::from(p().class("tool-info").attr("aria-live", "polite").text_dyn(move || match progression.get() {
+                    Some((a, t)) => format!("Analyse de la session… {a} / {t} mains"),
+                    None => "Le bilan classe vos fuites par EV perdue et donne vos priorités.".to_owned(),
+                })),
+            ]
+        }))
+        .child(div().class("bilan").children_dyn(move || match bilan.get() {
+            Some(r) => rendu_bilan(&r, analyser_index),
+            None => Vec::new(),
+        }))
         .child(div().class("chips hands-list").children_dyn(move || {
             let liste = mains.get();
             if liste.len() < 2 {
