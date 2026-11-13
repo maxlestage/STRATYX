@@ -38,7 +38,17 @@ pub fn class_at(i: usize) -> HandClass {
 /// Index de la classe d'une main.
 #[must_use]
 pub fn hole_class(h: HoleCards) -> usize {
-    class_index(h.class())
+    // Calcul direct depuis les identifiants `rang * 4 + couleur` (la carte haute a le plus
+    // grand identifiant, donc le rang le plus haut), sans construire de `HandClass` : même
+    // résultat que `class_index(h.class())`, appelé à chaque main simulée.
+    let [high, low] = h.cards();
+    let high_row = 12 - usize::from(high.id() / 4); // ligne de la grille : As en haut
+    let low_row = 12 - usize::from(low.id() / 4);
+    if high_row == low_row || high.id() % 4 == low.id() % 4 {
+        high_row * 13 + low_row // paire (diagonale) ou assortie (au-dessus)
+    } else {
+        low_row * 13 + high_row // dépareillée (en dessous)
+    }
 }
 
 /// Les combinaisons de chaque classe.
@@ -176,6 +186,13 @@ fn random_showdown(hero: HoleCards, opponents: usize, rng: &mut impl Rng) -> f32
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hole_class_matches_hand_class() {
+        for h in HoleCards::all() {
+            assert_eq!(hole_class(h), class_index(h.class()), "{h}");
+        }
+    }
 
     #[test]
     fn index_roundtrip() {

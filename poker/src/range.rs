@@ -24,6 +24,30 @@ use crate::cardset::CardSet;
 /// Nombre de combinaisons de deux cartes distinctes : C(52, 2).
 pub const NUM_COMBOS: usize = 1326;
 
+/// Les 1 326 combinaisons, rangées par [`HoleCards::index`] : pour chaque carte haute `h`,
+/// les cartes basses `l < h` dans l'ordre.
+static COMBOS_BY_INDEX: [HoleCards; NUM_COMBOS] = {
+    let mut table = [HoleCards {
+        high: Card::from_id_unchecked(1),
+        low: Card::from_id_unchecked(0),
+    }; NUM_COMBOS];
+    let mut i = 0;
+    let mut h = 1u8;
+    while h < 52 {
+        let mut l = 0u8;
+        while l < h {
+            table[i] = HoleCards {
+                high: Card::from_id_unchecked(h),
+                low: Card::from_id_unchecked(l),
+            };
+            i += 1;
+            l += 1;
+        }
+        h += 1;
+    }
+    table
+};
+
 /// Deux cartes privées, la plus forte (par identifiant) en premier.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HoleCards {
@@ -60,21 +84,11 @@ impl HoleCards {
         h * (h - 1) / 2 + l
     }
 
+    /// Inverse de [`HoleCards::index`] : une lecture dans une table calculée à la
+    /// compilation (appelée pour chaque combinaison à chaque parcours de range).
     #[must_use]
     pub fn from_index(index: usize) -> Option<HoleCards> {
-        if index >= NUM_COMBOS {
-            return None;
-        }
-        // Plus grand h tel que h(h-1)/2 <= index.
-        let mut h = 1usize;
-        while (h + 1) * h / 2 <= index {
-            h += 1;
-        }
-        let l = index - h * (h - 1) / 2;
-        Some(HoleCards {
-            high: Card::from_id(h as u8)?,
-            low: Card::from_id(l as u8)?,
-        })
+        COMBOS_BY_INDEX.get(index).copied()
     }
 
     /// Toutes les combinaisons, dans l'ordre des index.

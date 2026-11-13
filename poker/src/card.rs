@@ -151,6 +151,13 @@ impl Card {
         if id < 52 { Some(Card(id)) } else { None }
     }
 
+    /// Pour les tables construites à la compilation dans le crate (`id < 52` garanti par
+    /// l'appelant).
+    pub(crate) const fn from_id_unchecked(id: u8) -> Card {
+        debug_assert!(id < 52);
+        Card(id)
+    }
+
     #[must_use]
     pub const fn rank(self) -> Rank {
         Rank::ALL[(self.0 / 4) as usize]

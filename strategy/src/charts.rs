@@ -385,11 +385,12 @@ fn simulate(
         (Some(sh), Some(_)) => Some(rng.random_range(sh + 1..hero)),
         _ => None,
     };
-    let mut in_pot: Vec<usize> = Vec::with_capacity(n);
+    // Joueurs engagés, dans un tableau fixe (une allocation par main simulée coûtait cher).
+    let mut in_pot = [0usize; 10];
+    let mut pot_len = 0usize;
     let mut first = None;
     for i in 0..hero {
         let joins = Some(i) == shover || Some(i) == caller;
-        let pot_len = in_pot.len();
         let hc = draw_for(&mut used, rng, |c| {
             let p = s.p(i, first, pot_len, c);
             if joins { p } else { 1.0 - p }
@@ -397,21 +398,33 @@ fn simulate(
         hands[i] = hc.set();
         if joins {
             first.get_or_insert(i);
-            in_pot.push(i);
+            in_pot[pot_len] = i;
+            pot_len += 1;
         }
     }
     first.get_or_insert(hero);
-    in_pot.push(hero);
+    in_pot[pot_len] = hero;
+    pot_len += 1;
     for i in hero + 1..n {
         let a = draw(&mut used, rng);
         let b = draw(&mut used, rng);
         let hc = HoleCards::new(a, b)?;
-        if rng.random::<f32>() < s.p(i, first, in_pot.len(), hole_class(hc)) {
+        if rng.random::<f32>() < s.p(i, first, pot_len, hole_class(hc)) {
             hands[i] = hc.set();
-            in_pot.push(i);
+            in_pot[pot_len] = i;
+            pot_len += 1;
         }
     }
-    let ev_in = showdown(n, hero, &in_pot, &hands, posted, stack, &mut used, rng);
+    let ev_in = showdown(
+        n,
+        hero,
+        &in_pot[..pot_len],
+        &hands,
+        posted,
+        stack,
+        &mut used,
+        rng,
+    );
     Some((ev_in, -f64::from(posted[hero])))
 }
 
