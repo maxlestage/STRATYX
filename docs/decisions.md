@@ -5,7 +5,7 @@ ajoute une nouvelle qui la remplace (« remplace Dx »).
 
 - **D1 à D8** : décisions de cadrage du cahier des charges, **validées le 2026-11-04**
   (D8 remplace D4).
-- **T1 à T12** : décisions techniques qui en découlent. « Acceptée » : déjà appliquée dans
+- **T1 à T13** : décisions techniques qui en découlent. « Acceptée » : déjà appliquée dans
   le code. « Proposée » : à confirmer au début de la phase indiquée.
 
 ---
@@ -252,6 +252,28 @@ dans un lien (`/app#texte=…`) n'est jamais envoyé au serveur : le service wor
 **Pourquoi.** Les pseudonymes des adversaires sont des données personnelles (point de
 vigilance 3) ; le pare-feu applicatif du serveur refuserait aussi ces adresses. Le site
 reste utilisable hors ligne.
+
+### T13 — Capture et vision dans le navigateur, après la partie — *acceptée*
+
+**Choix.** La page `/app` filme l'écran (`getDisplayMedia`) ou la caméra, ou lit une vidéo et
+des captures d'écran choisies sur l'appareil. Pendant l'enregistrement, **rien n'est reconnu à
+l'écran et aucun conseil n'est affiché** (D6) : seules des images clés (quand la table change)
+sont gardées en mémoire. À l'arrêt, le crate `vision` (Rust pur, en WebAssembly) détecte les
+cartes face visible, sépare la main du joueur et le board, et reconnaît rang et couleur.
+
+**Calibration.** Chaque salle dessine ses cartes à sa façon : l'utilisateur indique les cartes
+douteuses, et chaque carte indiquée apprend son rang et sa couleur (plus proches voisins sur
+des coins normalisés). Les modèles appris restent dans le navigateur. Une lecture sous 60 %
+de confiance est toujours signalée, jamais utilisée en silence (T7).
+
+**Autorisations.** Seule la page `/app` ouvre `camera`, `display-capture` et `autoplay`
+(Permissions-Policy) et accepte les médias `blob:` (CSP) ; le reste du site garde la
+politique la plus stricte. Les images ne quittent pas l'appareil.
+
+**Limites.** Les tapis, mises, pot, bouton et actions ne sont pas encore lus : l'utilisateur
+les indique pour analyser un spot. L'historique texte de la salle reste la source la plus
+fiable pour une session complète. La lecture des montants demande des captures réelles de
+chaque salle visée.
 
 ---
 
