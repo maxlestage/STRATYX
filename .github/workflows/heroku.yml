@@ -7,6 +7,9 @@
 #   - secret   HEROKU_API_KEY   Heroku → Account settings → API Key → Reveal
 #   - variable HEROKU_APP_NAME  le nom de l'app (créée si elle n'existe pas)
 #   - variable facultative HEROKU_REGION : us (par défaut) ou eu
+#   - secret facultatif DATABASE_URL : base PostgreSQL gratuite (Neon), pour que la liste
+#     d'attente et les messages survivent aux redémarrages ; sans lui, base en mémoire
+#     (voir site/README.md, « Base de données »)
 # Sans eux, le déploiement est sauté (sans erreur).
 
 name: Déploiement Heroku
@@ -31,6 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       APP: ${{ vars.HEROKU_APP_NAME }}
       REGION: ${{ vars.HEROKU_REGION || 'us' }}
       STACK: heroku-26
@@ -77,6 +81,15 @@ jobs:
           url=$(api "https://api.heroku.com/apps/$APP" | jq -r '.web_url' | sed 's#/$##')
           api -X PATCH "https://api.heroku.com/apps/$APP/config-vars" \
             -d "{\"SITE_URL\":\"$url\"}" > /dev/null
+          # La base PostgreSQL (Neon), si le secret existe. jq échappe l'adresse, qui
+          # contient le mot de passe ; GitHub la masque dans les journaux.
+          if [ -n "${DATABASE_URL:-}" ]; then
+            jq -n --arg u "$DATABASE_URL" '{DATABASE_URL: $u}' \
+              | api -X PATCH "https://api.heroku.com/apps/$APP/config-vars" -d @- > /dev/null
+            echo "Base de données : PostgreSQL (secret DATABASE_URL)."
+          else
+            echo "::notice::Pas de secret DATABASE_URL : la liste d'attente et les messages restent en mémoire (perdus à chaque redémarrage). Voir site/README.md, « Base de données »."
+          fi
 
           git archive --format=tar.gz -o "$RUNNER_TEMP/source.tgz" HEAD
           sources=$(api -X POST https://api.heroku.com/sources)
