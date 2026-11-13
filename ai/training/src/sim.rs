@@ -11,11 +11,11 @@
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use stratyx_poker::game::{Action, Ante, Blinds, HandSetup, Phase};
-use stratyx_poker::history::{HandEvent, HandRecord, SeatRecord};
+use stratyx_poker::history::{HandEvent, HandMeta, HandRecord, SeatRecord};
 use stratyx_poker::{Card, CardSet, GameFormat, HandState, HoleCards, Street};
 use stratyx_shared::{Chips, Observed, Source};
-use stratyx_strategy::preflop::{self, draw};
-use stratyx_strategy::pushfold::{Chart, Node};
+use stratyx_strategy::charts::{Chart, Node};
+use stratyx_strategy::classes::{self, draw};
 use stratyx_strategy::villain::{call_shove_fraction, open_fraction, shove_fraction};
 use stratyx_strategy::{Spot, mc};
 
@@ -166,8 +166,8 @@ fn decide(
             }
         }
     };
-    let class = preflop::hole_class(hole);
-    let pct = preflop::percentile(class);
+    let class = classes::hole_class(hole);
+    let pct = classes::percentile(class);
     // Un peu de bruit : un même joueur ne joue pas deux fois la même main à l'identique.
     let noise = 1.0 + (rng.random::<f32>() - 0.5) * 0.3;
 
@@ -378,6 +378,10 @@ pub fn play_hand(
             })
             .collect(),
         events,
+        meta: HandMeta {
+            provenance: Some("simulation (auto-jeu)".to_owned()),
+            ..HandMeta::default()
+        },
     };
     let replay = record.replay().ok()?;
     let net = match replay.outcome {

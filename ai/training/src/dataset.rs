@@ -11,8 +11,8 @@ use rayon::prelude::*;
 use stratyx_poker::game::{HandSetup, PlayerStatus};
 use stratyx_poker::history::{HandEvent, HandRecord};
 use stratyx_poker::{HandState, HoleCards, Range, Street};
+use stratyx_strategy::charts::Chart;
 use stratyx_strategy::model::Classifier;
-use stratyx_strategy::pushfold::Chart;
 use stratyx_strategy::{
     Decision, HandFeatures, Inputs, Spot, classify, decision_features, mc, reference,
 };

@@ -1,5 +1,5 @@
 //! Force des 169 classes de mains de départ : équité préflop contre 1, 2 et 5 mains
-//! au hasard, dans l'ordre de la grille (voir [`crate::preflop`]).
+//! au hasard, dans l'ordre de la grille (voir [`crate::classes`]).
 //!
 //! Fichier généré par `cargo run --release -p stratyx-strategy --example tables`
 //! (200000 tirages par classe, graine fixe) : ne pas modifier à la main.

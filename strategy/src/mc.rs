@@ -5,7 +5,7 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use stratyx_poker::{Card, CardSet, HoleCards, Range, evaluate};
 
-use crate::preflop::draw;
+use crate::classes::draw;
 
 /// Une range prête à être tirée au sort : combinaisons et poids cumulés.
 #[derive(Debug, Clone)]

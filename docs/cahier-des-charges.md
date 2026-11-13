@@ -122,13 +122,13 @@ de `decisions.md`.
 | Phase | Contenu | Statut |
 |---|---|---|
 | 1 | Fondations Rust et moteur poker | **En cours** : moteur livré (voir ci-dessous) |
-| 2 | Capture vidéo et reconnaissance | **Commencée** : capture dans le navigateur et reconnaissance des cartes (T13) |
-| 3 | Retranscription automatique | Format pivot, validation par rejeu et import des historiques texte (PokerStars, Winamax) livrés |
+| 2 | Capture vidéo et reconnaissance | **Commencée** : capture native X11 et Windows, capture dans le navigateur et reconnaissance des cartes (T13) |
+| 3 | Retranscription automatique | Format pivot, validation par rejeu, import des historiques texte (PokerStars, Winamax) et base locale redb livrés |
 | 4 | IA Expresso et IA Tournois | **En cours** : première version livrée (voir ci-dessous) |
-| 5 | Analyses et statistiques | Analyse des mains livrée ; profils et statistiques à faire |
+| 5 | Analyses et statistiques | **Livrée** : profils, résultats, tournois, fuites, revue des mains et bilan de session |
 | 6 | Coaching et simulations | À faire |
 | 7 | Interfaces et API | Site web : PWA complète, page d'analyse `/app` (WebAssembly, hors ligne) |
-| 8 | Tests, sécurité et optimisation | Audit des dépendances et CI déjà en place |
+| 8 | Tests, sécurité et optimisation | Audit des dépendances, CI, chiffrement, authentification, RGPD et verrou D6 livrés |
 
 ### Phase 1 — livré
 
@@ -182,6 +182,21 @@ de `decisions.md`.
   (`analytics::spot`).
 - `analytics::session` : bilan d'une session d'historiques (statistiques et repères, fuites
   classées par EV perdue, décisions les plus coûteuses, priorités).
+
+### Autres livraisons (branche des phases 2 à 8)
+
+- `capture` : trait `ScreenCapturer`, X11 en Rust pur (testé sous Xvfb), Windows GDI.
+- `database` : base redb en cinq espaces, empreintes SHA-256, ingestion d'archives avec
+  provenance et licence (D5), sessions et progression, RGPD, import et export PokerStars.
+- `strategy` : matrice d'équité préflop 169 × 169 embarquée, équilibres push/fold par CFR+
+  (tête-à-tête en chipEV, 3-max en chipEV ou ICM, exploitabilité mesurée), solveur de river
+  CFR+, ranges d'open indicatives.
+- `analytics` : profils incrémentaux avec intervalle de Wilson et fiabilité, résultats
+  (BB/100, gains ajustés à l'all-in), tournois (ROI, ITM, multiplicateurs Expresso),
+  analyse de décision, détection de fuites par bandes de référence.
+- `security` : XChaCha20-Poly1305, Argon2id, coffres versionnés, jetons d'API, consentement
+  de capture et verrou d'analyse D6 imposé par les types, RGPD avec journal chaîné,
+  masquage des zones hors table, sauvegardes chiffrées.
 
 ### Phase 4 — reste à faire
 

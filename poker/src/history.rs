@@ -39,6 +39,29 @@ pub enum HandEvent {
     Muck { seat: u8 },
 }
 
+/// Contexte d'une main : joueur analysé, date, session, origine.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct HandMeta {
+    /// Siège du joueur analysé (le « héros »), s'il est assis à la table.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hero_seat: Option<u8>,
+    /// Début de la main, en millisecondes depuis l'époque Unix (UTC).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub played_at_ms: Option<u64>,
+    /// Session de capture ou d'import à laquelle appartient la main.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// Salle de poker (ex. « winamax »).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub site: Option<String>,
+    /// Nom de la table ou identifiant du tournoi côté salle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table: Option<String>,
+    /// Provenance et licence pour les archives (décision D5), ex. « mains personnelles ».
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<String>,
+}
+
 /// Historique complet d'une main.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HandRecord {
@@ -48,6 +71,8 @@ pub struct HandRecord {
     pub button_seat: u8,
     pub seats: Vec<SeatRecord>,
     pub events: Vec<Observed<HandEvent>>,
+    #[serde(default)]
+    pub meta: HandMeta,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -279,6 +304,10 @@ mod tests {
     fn expresso_hand() -> HandRecord {
         HandRecord {
             id: "exp-0001".into(),
+            meta: HandMeta {
+                hero_seat: Some(1),
+                ..HandMeta::default()
+            },
             format: GameFormat::EXPRESSO,
             blinds: ok(Blinds::new(10, 20)),
             button_seat: 1,
@@ -375,6 +404,7 @@ mod tests {
         events.push(act(3, Action::Fold));
         let h = HandRecord {
             id: "cash-fl-9max".into(),
+            meta: HandMeta::default(),
             format,
             blinds: ok(Blinds::new(2, 4)),
             button_seat: 1,

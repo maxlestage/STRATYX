@@ -2,7 +2,7 @@
 //!
 //! Pour chaque IA (Expresso 3-Max, Tournois 6-Max), [`train_format`] :
 //!
-//! 1. résout l'**équilibre push/fold** du format par jeu fictif ([`stratyx_strategy::pushfold`]) ;
+//! 1. résout l'**équilibre push/fold** du format par jeu fictif ([`stratyx_strategy::charts`]) ;
 //! 2. génère des **archives simulées** par auto-jeu ([`sim`]) et lit les **archives réelles**
 //!    du dossier fourni ([`archive`]) — nettoyées, dédupliquées, validées par rejeu ;
 //! 3. apprend le **modèle de population** (ce que jouent les joueurs, régression softmax) ;
@@ -24,8 +24,8 @@ use std::path::{Path, PathBuf};
 use stratyx_poker::Specialist;
 use stratyx_poker::history::HandRecord;
 use stratyx_strategy::bundle::{Metric, ModelBundle, Provenance};
-use stratyx_strategy::preflop::{CLASSES, class_at};
-use stratyx_strategy::pushfold::{Chart, Node, SolverConfig, solve};
+use stratyx_strategy::charts::{Chart, Node, SolverConfig, solve};
+use stratyx_strategy::classes::{CLASSES, class_at};
 
 /// Une IA à entraîner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
