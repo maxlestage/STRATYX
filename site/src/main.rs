@@ -2821,6 +2821,7 @@ mod tests {
             "style.css"
         );
         assert_eq!(css.matches("@font-face").count(), 4);
+        assert!(!css.contains("url(\"/") && !css.contains("url(/") && !css.contains("url('/"));
         let sw = client.get("/sw.js").await;
         assert_eq!(
             sw.header("content-security-policy"),
@@ -2836,7 +2837,12 @@ mod tests {
             let res = client.get(&format!("/fonts/{police}.woff2")).await;
             assert_eq!(res.status(), 200, "{police}");
             assert_eq!(res.header("content-type"), Some("font/woff2"), "{police}");
-            assert!(css.contains(&format!("/fonts/{police}.woff2")), "{police}");
+            // Adresse relative à la feuille de style : l'export statique (servi sous
+            // `/STRATYX/`) copie `style.css` tel quel, une adresse absolue y serait fausse.
+            assert!(
+                css.contains(&format!("url(\"fonts/{police}.woff2\")")),
+                "{police}"
+            );
         }
     }
 
