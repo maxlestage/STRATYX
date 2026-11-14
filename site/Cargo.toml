@@ -32,8 +32,9 @@ stratyx-vision = { path = "../vision" }
 # `compress` : réponses en Brotli ou gzip (brotli et flate2/miniz_oxide, en Rust pur).
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 paquets = { git = "https://github.com/maxlestage/Paquets", default-features = false, features = ["compress"] }
-# Sans son site web (`default-features = false`) : le moteur, le mode embarqué, les sauvegardes.
-nuage = { git = "https://github.com/maxlestage/Nuage", default-features = false }
+# Moteur embarqué seul (`default-features = false` : ni serveur ni site web), plus `s3` pour
+# les sauvegardes vers un seau S3 (NUAGE_BACKUP_S3_*).
+nuage = { git = "https://github.com/maxlestage/Nuage", default-features = false, features = ["s3"] }
 # Pour l'export statique (déjà utilisé par Paquets).
 tokio = { version = "1", features = ["rt-multi-thread"] }
 

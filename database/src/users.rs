@@ -2,14 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use redb::{ReadableDatabase, ReadableMultimapTable, ReadableTable};
 use serde::{Deserialize, Serialize};
 use stratyx_poker::Session;
 
 use crate::error::{DatabaseError, Result};
-use crate::space::Space;
-use crate::store::{Database, from_json, remove_hand, space_tables, to_json};
-use crate::tables::{PROFILES, PROGRESS, SESSIONS};
+use crate::store::{Database, from_json, remove_hand, to_json};
 
 /// Pseudonyme d'un utilisateur sur une salle.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,59 +83,61 @@ impl Database {
         if session.id.trim().is_empty() {
             return Err(DatabaseError::EmptyId("session"));
         }
-        let txn = self.db.begin_write()?;
-        txn.open_table(SESSIONS)?
-            .insert(session.id.as_str(), to_json(session)?.as_slice())?;
-        txn.commit()?;
-        Ok(())
+        let json = to_json(session)?;
+        self.write(|tx| {
+            tx.exec(
+                "INSERT OR REPLACE INTO session (id, debut, donnees) VALUES (?, ?, ?)",
+                &[
+                    session.id.as_str().into(),
+                    session.started_at_ms.into(),
+                    json.into(),
+                ],
+            )
+            .map(drop)
+        })
     }
 
     /// Session enregistrée sous cet identifiant.
     pub fn get_session(&self, id: &str) -> Result<Option<Session>> {
-        let txn = self.db.begin_read()?;
-        let table = txn.open_table(SESSIONS)?;
-        let value = table.get(id)?;
-        value.map(|v| from_json(v.value())).transpose()
+        self.read()?
+            .text("SELECT donnees FROM session WHERE id = ?", &[id.into()])?
+            .map(|json| from_json(json.as_bytes()))
+            .transpose()
     }
 
     /// Toutes les sessions, de la plus ancienne à la plus récente.
     pub fn list_sessions(&self) -> Result<Vec<Session>> {
-        let txn = self.db.begin_read()?;
-        let mut out: Vec<Session> = read_all(&txn.open_table(SESSIONS)?)?;
+        let mut out: Vec<Session> =
+            parse_all(self.read()?.texts("SELECT donnees FROM session", &[])?)?;
         out.sort_by(|a, b| a.started_at_ms.cmp(&b.started_at_ms).then(a.id.cmp(&b.id)));
         Ok(out)
     }
 
     /// Supprime une session **et ses mains** (droit à l'effacement).
     pub fn delete_session(&self, id: &str) -> Result<SessionErasure> {
-        let txn = self.db.begin_write()?;
-        let session: Option<Session> = {
-            let mut table = txn.open_table(SESSIONS)?;
-            let removed = table.remove(id)?;
-            removed.map(|v| from_json(v.value())).transpose()?
-        };
-        let mut hand_ids: Vec<String> = session
-            .as_ref()
-            .map(|s| s.hand_ids.clone())
-            .unwrap_or_default();
-        for space in Space::HAND_SPACES {
-            let table = txn.open_multimap_table(space_tables(space)?.by_session)?;
-            for v in table.get(id)? {
-                hand_ids.push(v?.value().to_string());
+        self.write(|tx| {
+            let session: Option<Session> = tx
+                .text("SELECT donnees FROM session WHERE id = ?", &[id.into()])?
+                .map(|json| from_json(json.as_bytes()))
+                .transpose()?;
+            tx.exec("DELETE FROM session WHERE id = ?", &[id.into()])?;
+            let mut hand_ids: Vec<String> = session
+                .as_ref()
+                .map(|s| s.hand_ids.clone())
+                .unwrap_or_default();
+            hand_ids.extend(tx.texts("SELECT id FROM main WHERE session = ?", &[id.into()])?);
+            hand_ids.sort();
+            hand_ids.dedup();
+            let mut hands_deleted = 0;
+            for hand in &hand_ids {
+                if remove_hand(tx, hand)?.is_some() {
+                    hands_deleted += 1;
+                }
             }
-        }
-        hand_ids.sort();
-        hand_ids.dedup();
-        let mut hands_deleted = 0;
-        for hand in &hand_ids {
-            if remove_hand(&txn, hand)?.is_some() {
-                hands_deleted += 1;
-            }
-        }
-        txn.commit()?;
-        Ok(SessionErasure {
-            session_found: session.is_some(),
-            hands_deleted,
+            Ok(SessionErasure {
+                session_found: session.is_some(),
+                hands_deleted,
+            })
         })
     }
 
@@ -149,77 +148,88 @@ impl Database {
         if profile.id.trim().is_empty() {
             return Err(DatabaseError::EmptyId("utilisateur"));
         }
-        let txn = self.db.begin_write()?;
-        txn.open_table(PROFILES)?
-            .insert(profile.id.as_str(), to_json(profile)?.as_slice())?;
-        txn.commit()?;
-        Ok(())
+        let json = to_json(profile)?;
+        self.write(|tx| {
+            tx.exec(
+                "INSERT OR REPLACE INTO profil (id, donnees) VALUES (?, ?)",
+                &[profile.id.as_str().into(), json.into()],
+            )
+            .map(drop)
+        })
     }
 
     /// Profil enregistré sous cet identifiant.
     pub fn get_user(&self, id: &str) -> Result<Option<UserProfile>> {
-        let txn = self.db.begin_read()?;
-        let table = txn.open_table(PROFILES)?;
-        let value = table.get(id)?;
-        value.map(|v| from_json(v.value())).transpose()
+        self.read()?
+            .text("SELECT donnees FROM profil WHERE id = ?", &[id.into()])?
+            .map(|json| from_json(json.as_bytes()))
+            .transpose()
     }
 
     /// Tous les profils, par identifiant.
     pub fn list_users(&self) -> Result<Vec<UserProfile>> {
-        let txn = self.db.begin_read()?;
-        read_all(&txn.open_table(PROFILES)?)
+        let mut out: Vec<UserProfile> =
+            parse_all(self.read()?.texts("SELECT donnees FROM profil", &[])?)?;
+        out.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(out)
     }
 
     /// Supprime un profil et sa progression (droit à l'effacement). Les mains jouées sous
     /// ses pseudonymes s'effacent avec [`Database::erase_player`].
     pub fn delete_user(&self, id: &str) -> Result<bool> {
-        let txn = self.db.begin_write()?;
-        let existed = txn.open_table(PROFILES)?.remove(id)?.is_some();
-        txn.open_table(PROGRESS)?.remove(id)?;
-        txn.commit()?;
-        Ok(existed)
+        self.write(|tx| {
+            let existed = tx.exec("DELETE FROM profil WHERE id = ?", &[id.into()])? > 0;
+            tx.exec(
+                "DELETE FROM progression WHERE utilisateur = ?",
+                &[id.into()],
+            )?;
+            Ok(existed)
+        })
     }
 
     /// Ajoute une mesure de progression à un utilisateur existant.
     pub fn add_progress(&self, user_id: &str, entry: ProgressEntry) -> Result<()> {
-        let txn = self.db.begin_write()?;
-        if txn.open_table(PROFILES)?.get(user_id)?.is_none() {
-            return Err(DatabaseError::UnknownUser(user_id.to_string()));
-        }
-        {
-            let mut table = txn.open_table(PROGRESS)?;
-            let mut entries: Vec<ProgressEntry> = match table.get(user_id)? {
-                Some(v) => from_json(v.value())?,
-                None => Vec::new(),
-            };
+        self.write(|tx| {
+            let known = tx.int(
+                "SELECT count(*) FROM profil WHERE id = ?",
+                &[user_id.into()],
+            )?;
+            if known.unwrap_or(0) == 0 {
+                return Err(DatabaseError::UnknownUser(user_id.to_string()));
+            }
+            let mut entries = progress_in(tx, user_id)?;
             entries.push(entry);
             entries.sort_by_key(|e| e.at_ms);
-            table.insert(user_id, to_json(&entries)?.as_slice())?;
-        }
-        txn.commit()?;
-        Ok(())
+            tx.exec(
+                "INSERT OR REPLACE INTO progression (utilisateur, donnees) VALUES (?, ?)",
+                &[user_id.into(), to_json(&entries)?.into()],
+            )
+            .map(drop)
+        })
     }
 
     /// Progression d'un utilisateur, par date croissante.
     pub fn progress(&self, user_id: &str) -> Result<Vec<ProgressEntry>> {
-        let txn = self.db.begin_read()?;
-        let table = txn.open_table(PROGRESS)?;
-        let value = table.get(user_id)?;
-        Ok(value
-            .map(|v| from_json(v.value()))
-            .transpose()?
-            .unwrap_or_default())
+        progress_in(&self.read()?, user_id)
     }
 }
 
-/// Désérialise toutes les valeurs JSON d'une table.
-pub(crate) fn read_all<T: serde::de::DeserializeOwned>(
-    table: &impl ReadableTable<&'static str, &'static [u8]>,
-) -> Result<Vec<T>> {
-    let mut out = Vec::new();
-    for entry in table.iter()? {
-        let (_, v) = entry?;
-        out.push(from_json(v.value())?);
-    }
-    Ok(out)
+/// Progression d'un utilisateur, dans une transaction.
+pub(crate) fn progress_in(tx: &crate::sql::Tx<'_>, user_id: &str) -> Result<Vec<ProgressEntry>> {
+    Ok(tx
+        .text(
+            "SELECT donnees FROM progression WHERE utilisateur = ?",
+            &[user_id.into()],
+        )?
+        .map(|json| from_json(json.as_bytes()))
+        .transpose()?
+        .unwrap_or_default())
+}
+
+/// Désérialise des valeurs JSON.
+pub(crate) fn parse_all<T: serde::de::DeserializeOwned>(values: Vec<String>) -> Result<Vec<T>> {
+    values
+        .iter()
+        .map(|json| from_json(json.as_bytes()))
+        .collect()
 }

@@ -791,16 +791,16 @@ Demande de l'utilisateur : « Déplace tout … sert t'en de base de données »
 trois chantiers :
 
 1. **Memoire** : fonctionnalité `nuage-wire` (format d'échange seul) — *fait*, branche
-   `claude/nuage-wire` de Memoire (`074fbde`), à fusionner par l'utilisateur.
+   `claude/nuage-wire` de Memoire (`074fbde`), fusionnée.
 2. **Nuage** : mode embarqué en Rust pur (RustCrypto à la place de `ring`, réseau et S3
    optionnels) — *fait*, branche `claude/nuage-100-rust` de Nuage (`5fd8056`), compatible
-   avec les données chiffrées et les sauvegardes de la version précédente ; à fusionner.
+   avec les données chiffrées et les sauvegardes de la version précédente ; fusionnée.
 3. **STRATYX** : le crate `database` migre de redb vers Nuage, en étapes :
    - **a** — dépendance optionnelle et audit — *fait (2026-11-14)* ;
-   - **b** — stockage Nuage complet derrière la fonctionnalité `nuage` (mains, requêtes,
-     utilisateurs, stratégie, import, confidentialité, migrations), mêmes tests sur les deux
-     stockages ;
-   - **c** — Nuage par défaut, import automatique des anciennes bases redb, retrait de redb.
+   - **b** — stockage Nuage complet (mains, requêtes, utilisateurs, stratégie, import,
+     confidentialité, migrations) — *fait (2026-11-14)* ;
+   - **c** — Nuage par défaut, import automatique des anciennes bases redb, redb réduit à
+     cette lecture — *fait (2026-11-14)*.
 
 ### Étape a (2026-11-14)
 
@@ -836,5 +836,39 @@ et tournoi) enregistrés côte à côte dans redb et dans Nuage, chaque résulta
 suppression). Test de réouverture : les mains relues après fermeture. Lint et tests du
 workspace, `cargo deny check`, lint et tests de `stratyx-database --features nuage`.
 
-**Prochaine étape (b, 2e partie).** Index et recherche (`query.rs` : joueur, session,
-format, statut, date, mains à revoir) dans Nuage, comparés à redb ; puis `revalidate`.
+### Demande de l'utilisateur : tout fusionner d'un coup (2026-11-14)
+
+« Tu peux merge stratyx vers nuage db tu peux importer memoire et paquets » (choix :
+« Tout, d'un coup »). Fait en une fois, sans attendre la routine :
+
+- **Memoire** : `claude/nuage-wire` fusionnée dans master (avance rapide, `074fbde`).
+- **Nuage** : `claude/nuage-100-rust` fusionnée avec le master du jour (`5c057b9` : textes
+  rangés en nombres, `INTERVAL`, `extract`), lint et tests (toutes fonctionnalités et moteur
+  seul) verts, poussée sur master (`5953e23`). Puis **`EmbeddedTransaction::sql`** (`23eb6fc`,
+  testé) : du SQL dans une transaction, pour lire, décider et écrire d'un bloc.
+- **Paquets** : ajouté à la session ; `Cargo.lock` passé au master de Memoire, sur la branche
+  `claude/memoire-nuage-wire` (sa CI fusionne et déploie si tout est vert).
+- **STRATYX, base locale** : tout le crate `database` est sur Nuage DB (étapes b et c
+  ensemble). Un dossier Nuage au lieu d'un fichier redb ; tables SQL `main` (main et résumé
+  en JSON, colonnes indexées : espace, session, format, validation, à revoir, date),
+  `main_joueur`, `empreinte`, `session`, `profil`, `progression`, `strategie`, `ingestion`,
+  `meta`, `migration`. Chaque opération est une transaction Nuage (écritures sérialisées) ;
+  migrations dans une transaction (une migration ratée n'a rien créé). API publique
+  inchangée ; `DatabaseError::Storage` porte désormais un texte.
+- **Anciennes bases** : `Database::open` d'un fichier redb l'importe (mains avec dates, lots
+  et statuts, empreintes, sessions, profils, progression, stratégie, rapports, compteur de
+  lots), le garde renommé `<nom>.ancienne-redb` ; en cas d'échec, rien n'est changé. redb ne
+  sert plus qu'à cette lecture (fonctionnalité `import-redb`, par défaut).
+- **Site** : Nuage du master (`23eb6fc`) avec `features = ["s3"]` et
+  `config::engine_from_vars` (configuration du moteur seule).
+
+**Vérifié.** Les 14 tests d'intégration de la base (`tests/store.rs`), l'import PokerStars et
+sa robustesse, les tests de migration réécrits, deux tests d'import d'une ancienne base
+(tout relu, réouverture sans réimport, compteur de lots qui continue ; fichier illisible
+laissé intact) ; aussi sans `import-redb`. Lint et tests du workspace, `cargo deny check`
+(aucun crate interdit dans l'arbre de la base). Site : formatage, lint natif et
+WebAssembly, tests. Test des fichiers abîmés réécrit pour un dossier Nuage : il trouve
+encore des paniques de redb 4.6 (utilisé par Nuage pour ses pages), il reste ignoré.
+
+**Chantier Nuage : terminé.** Reste (facultatif) : rapporter le défaut de redb en amont ;
+créer le seau S3 du site (secrets `NUAGE_*`).

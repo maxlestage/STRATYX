@@ -1,12 +1,14 @@
 //! Base locale : ouverture, enregistrement et lecture des mains.
 
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use redb::backends::InMemoryBackend;
-use redb::{ReadableDatabase, ReadableTable, WriteTransaction};
+use nuage::{Embedded, EngineOptions};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as Json;
 use stratyx_poker::HandRecord;
 use stratyx_shared::Confidence;
 
@@ -15,8 +17,8 @@ use crate::fingerprint::Fingerprint;
 use crate::migration::{self, AppliedMigration};
 use crate::query::format_key;
 use crate::space::Space;
+use crate::sql::{Tx, storage, to_u64};
 use crate::status::{HandStatus, HandSummary, analyze};
-use crate::tables::{self, FINGERPRINTS, HandTables, LOCATOR, STATUS_TO_REVIEW};
 
 /// Version du format d'enregistrement d'une main ([`StoredHand`]).
 pub const HAND_FORMAT_VERSION: u32 = 1;
@@ -52,20 +54,42 @@ pub enum PutOutcome {
     },
 }
 
-/// Base de données locale de Stratyx : un fichier redb unique, organisé en cinq espaces
-/// logiques ([`Space`]).
+/// Base de données locale de Stratyx : un dossier Nuage DB (base embarquée transactionnelle
+/// en Rust pur, décision T14), organisé en cinq espaces logiques ([`Space`]).
 ///
 /// Chaque méthode s'exécute dans sa propre transaction ACID. La base peut être partagée
-/// entre fils d'exécution (`&Database` suffit, les écritures sont sérialisées par redb).
+/// entre fils d'exécution (`&Database` suffit, les écritures sont sérialisées).
 pub struct Database {
-    pub(crate) db: redb::Database,
+    pub(crate) db: Embedded,
     pub(crate) review_threshold: Confidence,
+    /// Sérialise les écritures (voir [`Database::write`]).
+    pub(crate) writes: Mutex<()>,
+    /// Dossier temporaire d'une base [`Database::in_memory`], supprimé avec elle.
+    temp: Option<TempDir>,
+}
+
+/// Dossier supprimé à la fermeture de la base.
+struct TempDir(PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl Drop for Database {
+    fn drop(&mut self) {
+        // Tout sur disque avant de rendre le dossier (une base temporaire est supprimée
+        // ensuite, champ `temp`).
+        let _ = self.db.engine().close();
+    }
 }
 
 impl fmt::Debug for Database {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Database")
             .field("review_threshold", &self.review_threshold)
+            .field("temporary", &self.temp.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -96,23 +120,60 @@ pub(crate) enum Stored {
 }
 
 impl Database {
-    /// Ouvre la base du fichier indiqué, la crée si besoin et applique les migrations de
+    /// Ouvre la base du dossier indiqué, la crée si besoin et applique les migrations de
     /// schéma manquantes.
+    ///
+    /// Si `path` est un **fichier**, c'est une ancienne base redb (versions précédentes de
+    /// Stratyx) : elle est renommée `<nom>.ancienne-redb`, son contenu est importé dans une
+    /// base Nuage créée à sa place, puis elle est gardée telle quelle en secours. En cas
+    /// d'échec, rien n'est changé (fonctionnalité `import-redb`, active par défaut).
     pub fn open(path: impl AsRef<Path>) -> Result<Database> {
-        Database::init(redb::Database::create(path)?)
+        let path = path.as_ref();
+        if path.is_file() {
+            return crate::legacy::open_and_import(path);
+        }
+        Database::open_dir(path, EngineOptions::default())
     }
 
-    /// Base en mémoire, sans fichier (tests, simulations).
+    /// Base temporaire, supprimée à sa fermeture (tests, simulations).
     pub fn in_memory() -> Result<Database> {
-        Database::init(redb::Database::builder().create_with_backend(InMemoryBackend::new())?)
+        let db = Database::unmigrated()?;
+        migration::migrate(&db, migration::MIGRATIONS)?;
+        Ok(db)
     }
 
-    fn init(db: redb::Database) -> Result<Database> {
-        migration::migrate(&db, migration::MIGRATIONS)?;
+    /// Base temporaire sans schéma (tests des migrations).
+    pub(crate) fn unmigrated() -> Result<Database> {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "stratyx-base-{}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed),
+            crate::now_ms()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let options = EngineOptions {
+            sync: false,
+            ..EngineOptions::default()
+        };
+        let db = Embedded::open_with(&dir, options).map_err(storage)?;
         Ok(Database {
             db,
             review_threshold: Confidence::DEFAULT_REVIEW_THRESHOLD,
+            writes: Mutex::new(()),
+            temp: Some(TempDir(dir)),
         })
+    }
+
+    pub(crate) fn open_dir(dir: &Path, options: EngineOptions) -> Result<Database> {
+        let db = Database {
+            db: Embedded::open_with(dir, options).map_err(storage)?,
+            review_threshold: Confidence::DEFAULT_REVIEW_THRESHOLD,
+            writes: Mutex::new(()),
+            temp: None,
+        };
+        migration::migrate(&db, migration::MIGRATIONS)?;
+        Ok(db)
     }
 
     /// Seuil de confiance sous lequel une détection de la vision est à revoir
@@ -126,12 +187,12 @@ impl Database {
 
     /// Version du schéma de la base.
     pub fn schema_version(&self) -> Result<u32> {
-        migration::current_version(&self.db)
+        migration::current_version(&self.read()?)
     }
 
     /// Journal des migrations appliquées à cette base.
     pub fn migration_log(&self) -> Result<Vec<AppliedMigration>> {
-        migration::log(&self.db)
+        migration::log(&self.read()?)
     }
 
     // --- Mains ----------------------------------------------------------------------
@@ -143,9 +204,8 @@ impl Database {
     /// contenu de jeu est déjà enregistré sous un autre identifiant n'est pas écrite
     /// ([`PutOutcome::Duplicate`]).
     pub fn put_hand(&self, record: &HandRecord) -> Result<PutOutcome> {
-        let txn = self.db.begin_write()?;
-        let outcome = store_hand(&txn, record, self.review_threshold, None, StoreMode::Upsert)?;
-        txn.commit()?;
+        let outcome = self
+            .write(|tx| store_hand(tx, record, self.review_threshold, None, StoreMode::Upsert))?;
         Ok(match outcome {
             Stored::Inserted(s) => PutOutcome::Inserted(s),
             Stored::Updated(s) => PutOutcome::Updated(s),
@@ -162,80 +222,55 @@ impl Database {
 
     /// Main enregistrée sous cet identifiant.
     pub fn get_hand(&self, id: &str) -> Result<Option<StoredHand>> {
-        let txn = self.db.begin_read()?;
-        let Some(space) = locate(&txn.open_table(LOCATOR)?, id)? else {
-            return Ok(None);
-        };
-        let t = space_tables(space)?;
-        let Some(bytes) = txn.open_table(t.hands)?.get(id)? else {
-            return Err(DatabaseError::Corrupted(format!(
-                "main « {id} » référencée mais absente"
-            )));
-        };
-        decode_hand(id, bytes.value()).map(Some)
+        read_hand_in(&self.read()?, id)
     }
 
     /// Résumé (statut, joueurs, résultat du héros) de la main.
     pub fn hand_summary(&self, id: &str) -> Result<Option<HandSummary>> {
-        let txn = self.db.begin_read()?;
-        let Some(space) = locate(&txn.open_table(LOCATOR)?, id)? else {
-            return Ok(None);
-        };
-        let t = space_tables(space)?;
-        let summary = txn.open_table(t.summaries)?.get(id)?;
-        summary.map(|v| from_json(v.value())).transpose()
+        self.read()?
+            .text("SELECT resume FROM main WHERE id = ?", &[id.into()])?
+            .map(|json| from_json(json.as_bytes()))
+            .transpose()
     }
 
     /// Identifiant de la main enregistrée avec cette empreinte.
     pub fn find_by_fingerprint(&self, fingerprint: &Fingerprint) -> Result<Option<String>> {
-        let txn = self.db.begin_read()?;
-        let table = txn.open_table(FINGERPRINTS)?;
-        Ok(table
-            .get(fingerprint.as_bytes())?
-            .map(|v| v.value().to_string()))
+        self.read()?.text(
+            "SELECT main FROM empreinte WHERE empreinte = ?",
+            &[fingerprint.to_hex().into()],
+        )
     }
 
     /// Supprime une main et ses entrées d'index. Renvoie `false` si elle n'existait pas.
     pub fn delete_hand(&self, id: &str) -> Result<bool> {
-        let txn = self.db.begin_write()?;
-        let removed = remove_hand(&txn, id)?.is_some();
-        txn.commit()?;
-        Ok(removed)
+        self.write(|tx| Ok(remove_hand(tx, id)?.is_some()))
     }
 
     /// Nombre de mains, dans un espace ou dans toute la base.
     pub fn count_hands(&self, space: Option<Space>) -> Result<u64> {
-        let txn = self.db.begin_read()?;
-        let mut total = 0;
-        for s in Space::HAND_SPACES {
-            if space.is_none_or(|x| x == s) {
-                total +=
-                    redb::ReadableTableMetadata::len(&txn.open_table(space_tables(s)?.hands)?)?;
-            }
-        }
-        Ok(total)
+        let tx = self.read()?;
+        let n = match space {
+            None => tx.int("SELECT count(*) FROM main", &[])?,
+            Some(s) => tx.int(
+                "SELECT count(*) FROM main WHERE espace = ?",
+                &[s.code().into()],
+            )?,
+        };
+        to_u64(n.unwrap_or(0))
     }
 
     /// Rejoue toutes les mains enregistrées et met à jour statuts, empreintes et index (après
     /// une évolution du moteur de règles ou un changement de seuil de revue). Renvoie le
     /// nombre de mains dont le statut a changé.
     pub fn revalidate(&self) -> Result<usize> {
-        let txn = self.db.begin_write()?;
-        let mut changed = 0;
-        for space in Space::HAND_SPACES {
-            let ids: Vec<String> = {
-                let table = txn.open_table(space_tables(space)?.hands)?;
-                table
-                    .iter()?
-                    .map(|e| e.map(|(k, _)| k.value().to_string()))
-                    .collect::<Result<_, _>>()?
-            };
-            for id in ids {
-                let Some(old) = read_hand_in(&txn, &id)? else {
+        self.write(|tx| {
+            let mut changed = 0;
+            for id in tx.texts("SELECT id FROM main ORDER BY id", &[])? {
+                let Some(old) = read_hand_in(tx, &id)? else {
                     continue;
                 };
                 let summary = match store_hand(
-                    &txn,
+                    tx,
                     &old.record,
                     self.review_threshold,
                     old.batch_id.as_deref(),
@@ -248,38 +283,19 @@ impl Database {
                     changed += 1;
                 }
             }
-        }
-        txn.commit()?;
-        Ok(changed)
+            Ok(changed)
+        })
     }
 }
 
-// --- Fonctions internes, dans une transaction d'écriture ----------------------------------
+// --- Fonctions internes, dans une transaction ----------------------------------------------
 
-pub(crate) fn to_json<T: Serialize>(value: &T) -> Result<Vec<u8>> {
-    Ok(serde_json::to_vec(value)?)
+pub(crate) fn to_json<T: Serialize>(value: &T) -> Result<String> {
+    Ok(serde_json::to_string(value)?)
 }
 
 pub(crate) fn from_json<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
     Ok(serde_json::from_slice(bytes)?)
-}
-
-pub(crate) fn space_tables(space: Space) -> Result<HandTables> {
-    tables::hand_tables(space).ok_or_else(|| {
-        DatabaseError::Corrupted(format!("l'espace {space} ne contient pas de mains"))
-    })
-}
-
-pub(crate) fn locate(
-    table: &impl ReadableTable<&'static str, u8>,
-    id: &str,
-) -> Result<Option<Space>> {
-    match table.get(id)? {
-        None => Ok(None),
-        Some(code) => Space::from_code(code.value())
-            .map(Some)
-            .ok_or_else(|| DatabaseError::Corrupted(format!("code d'espace {}", code.value()))),
-    }
 }
 
 pub(crate) fn decode_hand(id: &str, bytes: &[u8]) -> Result<StoredHand> {
@@ -298,18 +314,54 @@ pub(crate) fn decode_hand(id: &str, bytes: &[u8]) -> Result<StoredHand> {
     from_json(bytes)
 }
 
-pub(crate) fn read_hand_in(txn: &WriteTransaction, id: &str) -> Result<Option<StoredHand>> {
-    let Some(space) = locate(&txn.open_table(LOCATOR)?, id)? else {
-        return Ok(None);
-    };
-    let table = txn.open_table(space_tables(space)?.hands)?;
-    let bytes = table.get(id)?;
-    bytes.map(|b| decode_hand(id, b.value())).transpose()
+pub(crate) fn read_hand_in(tx: &Tx<'_>, id: &str) -> Result<Option<StoredHand>> {
+    tx.text("SELECT donnees FROM main WHERE id = ?", &[id.into()])?
+        .map(|json| decode_hand(id, json.as_bytes()))
+        .transpose()
+}
+
+/// Écrit la ligne d'une main et ses index (la main ne doit pas déjà exister) ; l'empreinte
+/// lui revient si aucune autre main ne la porte.
+pub(crate) fn insert_hand_row(tx: &Tx<'_>, stored: &StoredHand, s: &HandSummary) -> Result<()> {
+    let id = s.id.as_str();
+    let fp = s.fingerprint.to_hex();
+    let params: [Json; 10] = [
+        id.into(),
+        s.space.code().into(),
+        fp.clone().into(),
+        s.session_id.clone().into(),
+        format_key(s.format).into(),
+        s.status.validation.kind().key().into(),
+        u8::from(s.status.needs_review()).into(),
+        s.played_at_ms.into(),
+        to_json(stored)?.into(),
+        to_json(s)?.into(),
+    ];
+    tx.exec(
+        "INSERT INTO main (id, espace, empreinte, session, format, validation, a_revoir, \
+         joue_le, donnees, resume) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        &params,
+    )?;
+    for player in &s.players {
+        tx.exec(
+            "INSERT OR IGNORE INTO main_joueur (cle, main, joueur) VALUES (?, ?, ?)",
+            &[
+                format!("{id}\u{1f}{player}").into(),
+                id.into(),
+                player.as_str().into(),
+            ],
+        )?;
+    }
+    tx.exec(
+        "INSERT OR IGNORE INTO empreinte (empreinte, main) VALUES (?, ?)",
+        &[fp.into(), id.into()],
+    )?;
+    Ok(())
 }
 
 /// Enregistre une main (et ses index) dans la transaction.
 pub(crate) fn store_hand(
-    txn: &WriteTransaction,
+    tx: &Tx<'_>,
     record: &HandRecord,
     threshold: Confidence,
     batch_id: Option<&str>,
@@ -323,22 +375,22 @@ pub(crate) fn store_hand(
     let summary = analyze(record, space, threshold);
     let fp = summary.fingerprint;
 
-    if mode != StoreMode::Force {
-        let fingerprints = txn.open_table(FINGERPRINTS)?;
-        if let Some(existing) = fingerprints.get(fp.as_bytes())? {
-            let existing = existing.value();
-            if existing != id {
-                return Ok(Stored::Duplicate {
-                    existing_id: existing.to_string(),
-                    fingerprint: fp,
-                });
-            }
-        }
+    if mode != StoreMode::Force
+        && let Some(existing) = tx.text(
+            "SELECT main FROM empreinte WHERE empreinte = ?",
+            &[fp.to_hex().into()],
+        )?
+        && existing != id
+    {
+        return Ok(Stored::Duplicate {
+            existing_id: existing,
+            fingerprint: fp,
+        });
     }
 
     let existed = match mode {
         StoreMode::Ingest => {
-            if let Some(old) = read_hand_in(txn, id)? {
+            if let Some(old) = read_hand_in(tx, id)? {
                 return Ok(if old.fingerprint == fp {
                     Stored::Duplicate {
                         existing_id: id.to_string(),
@@ -352,7 +404,7 @@ pub(crate) fn store_hand(
             }
             false
         }
-        StoreMode::Upsert | StoreMode::Force => remove_hand(txn, id)?.is_some(),
+        StoreMode::Upsert | StoreMode::Force => remove_hand(tx, id)?.is_some(),
     };
 
     let stored = StoredHand {
@@ -364,17 +416,7 @@ pub(crate) fn store_hand(
         stored_at_ms: crate::now_ms(),
         record: record.clone(),
     };
-    let t = space_tables(space)?;
-    txn.open_table(t.hands)?
-        .insert(id, to_json(&stored)?.as_slice())?;
-    txn.open_table(t.summaries)?
-        .insert(id, to_json(&summary)?.as_slice())?;
-    index(txn, &t, &summary, true)?;
-    txn.open_table(LOCATOR)?.insert(id, space.code())?;
-    let mut fingerprints = txn.open_table(FINGERPRINTS)?;
-    if fingerprints.get(fp.as_bytes())?.is_none() {
-        fingerprints.insert(fp.as_bytes(), id)?;
-    }
+    insert_hand_row(tx, &stored, &summary)?;
     Ok(if existed {
         Stored::Updated(summary)
     } else {
@@ -383,64 +425,21 @@ pub(crate) fn store_hand(
 }
 
 /// Supprime une main et ses entrées d'index ; renvoie son résumé.
-pub(crate) fn remove_hand(txn: &WriteTransaction, id: &str) -> Result<Option<HandSummary>> {
-    let space = {
-        let mut locator = txn.open_table(LOCATOR)?;
-        let Some(code) = locator.remove(id)? else {
-            return Ok(None);
-        };
-        let code = code.value();
-        Space::from_code(code)
-            .ok_or_else(|| DatabaseError::Corrupted(format!("code d'espace {code}")))?
+pub(crate) fn remove_hand(tx: &Tx<'_>, id: &str) -> Result<Option<HandSummary>> {
+    let Some(json) = tx.text("SELECT resume FROM main WHERE id = ?", &[id.into()])? else {
+        return Ok(None);
     };
-    let t = space_tables(space)?;
-    txn.open_table(t.hands)?.remove(id)?;
-    let summary: HandSummary = {
-        let mut summaries = txn.open_table(t.summaries)?;
-        let bytes = summaries.remove(id)?.ok_or_else(|| {
-            DatabaseError::Corrupted(format!("résumé de la main « {id} » absent"))
-        })?;
-        from_json(bytes.value())?
-    };
-    index(txn, &t, &summary, false)?;
-    let mut fingerprints = txn.open_table(FINGERPRINTS)?;
-    let owned = fingerprints
-        .get(summary.fingerprint.as_bytes())?
-        .is_some_and(|v| v.value() == id);
-    if owned {
-        fingerprints.remove(summary.fingerprint.as_bytes())?;
-    }
+    let summary: HandSummary = from_json(json.as_bytes())?;
+    tx.exec(
+        "DELETE FROM main WHERE id = ?; \
+         DELETE FROM main_joueur WHERE main = ?; \
+         DELETE FROM empreinte WHERE empreinte = ? AND main = ?",
+        &[
+            id.into(),
+            id.into(),
+            summary.fingerprint.to_hex().into(),
+            id.into(),
+        ],
+    )?;
     Ok(Some(summary))
-}
-
-/// Ajoute (`insert = true`) ou retire les entrées d'index d'une main.
-fn index(txn: &WriteTransaction, t: &HandTables, s: &HandSummary, insert: bool) -> Result<()> {
-    let id = s.id.as_str();
-    let mut entries: Vec<(redb::MultimapTableDefinition<&str, &str>, String)> =
-        s.players.iter().map(|p| (t.by_player, p.clone())).collect();
-    if let Some(session) = &s.session_id {
-        entries.push((t.by_session, session.clone()));
-    }
-    entries.push((t.by_format, format_key(s.format)));
-    entries.push((t.by_status, s.status.validation.kind().key().to_string()));
-    if s.status.needs_review() {
-        entries.push((t.by_status, STATUS_TO_REVIEW.to_string()));
-    }
-    for (def, key) in entries {
-        let mut table = txn.open_multimap_table(def)?;
-        if insert {
-            table.insert(key.as_str(), id)?;
-        } else {
-            table.remove(key.as_str(), id)?;
-        }
-    }
-    if let Some(at) = s.played_at_ms {
-        let mut dates = txn.open_table(t.by_date)?;
-        if insert {
-            dates.insert((at, id), ())?;
-        } else {
-            dates.remove((at, id))?;
-        }
-    }
-    Ok(())
 }

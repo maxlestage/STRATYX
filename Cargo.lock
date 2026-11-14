@@ -609,7 +609,7 @@ dependencies = [
 [[package]]
 name = "nuage"
 version = "0.4.0"
-source = "git+https://github.com/maxlestage/Nuage?rev=5fd8056#5fd8056ea2694e0c9aecd7bdb3b11b4b41ffd3ee"
+source = "git+https://github.com/maxlestage/Nuage?rev=23eb6fc#23eb6fcc8aa73fa3ca0bae567add0f13521a37a8"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1127,6 +1127,7 @@ version = "0.1.0"
 name = "stratyx-database"
 version = "0.1.0"
 dependencies = [
+ "memoire-orm",
  "nuage",
  "rand 0.9.5",
  "rand_chacha",
