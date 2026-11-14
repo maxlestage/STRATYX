@@ -659,3 +659,24 @@ localement), en plus de Linux.
 
 **Pistes suivantes.** En attente de la décision de l'utilisateur sur la réorientation de la
 routine (fonctionnalités dans les crates squelettes, ou fréquence réduite).
+
+## 2026-11-14 — Itération 23 : archives d'entraînement, un fichier abîmé n'arrête plus tout
+
+**CI.** Celle de l'itération 22 est verte et fusionnée.
+
+**Constat** (`ai/training/src/archive.rs`, lecture de `--archives DOSSIER`). Les `.txt`
+étaient lus de façon tolérante (`from_utf8_lossy`), mais pas les `.json`
+(`read_to_string(…)?`) ni les `.jsonl` (`line?`) : un seul `.json` non UTF-8, une ligne
+abîmée dans un `.jsonl`, ou un sous-dossier nommé `x.json` faisaient échouer **tout
+l'entraînement** sur une erreur d'entrée-sortie.
+
+**Changement.** Chaque fichier est lu en octets ; un fichier illisible compte comme invalide
+et la lecture continue ; les `.json` sont analysés avec `from_slice` et les `.jsonl` ligne
+par ligne en octets (une ligne illisible compte comme invalide, sans écarter les autres).
+Test `unreadable_files_do_not_stop_the_load` : un dossier mêlant historique valide, doublon
+JSON Lines, JSON non UTF-8, ligne abîmée, sous-dossier `piege.json` et fichier sans rapport
+— 1 main gardée, 2 doublons, 3 invalides comptés. Entraînement `--rapide` : modèles
+identiques (hors date).
+
+**Pistes suivantes.** En attente de la décision de l'utilisateur sur la réorientation de la
+routine (fonctionnalités dans les crates squelettes, ou fréquence réduite).
