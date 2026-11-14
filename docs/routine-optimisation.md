@@ -697,3 +697,35 @@ routine (fonctionnalités dans les crates squelettes, ou fréquence réduite).
 **Pistes suivantes.** En attente de la décision de l'utilisateur sur la réorientation de la
 routine (fonctionnalités dans les crates squelettes, ou fréquence réduite) : les dernières
 itérations trouvent de moins en moins de défauts.
+
+## 2026-11-14 — Itération 25 : base locale abîmée, limite de redb mise au jour (pas de correctif)
+
+**CI.** Celle de l'itération 24 est verte et fusionnée.
+
+**Démarche.** Nouveau test `database/tests/fichier_abime.rs` : une vraie base (mains de
+l'historique d'exemple), puis le fichier vide, remplacé par du texte ou du bruit, tronqué à
+9 positions, un octet inversé tous les 509 octets (~300 cas) et des blocs de 64 octets mis à
+zéro ; à chaque fois `Database::open` puis lecture de toutes les mains, sous `catch_unwind`.
+
+**Trouvé.** Les fichiers vides, de texte, de bruit ou tronqués sont refusés proprement. Mais
+**redb 4.4.0 panique sur 6 fichiers dont un seul octet est inversé** (index hors limites
+dans l'allocateur de pages, `unwrap` d'un nom de table non UTF-8), à l'ouverture et même à
+la libération de la base. Essais :
+
+- redb **4.6.0** (dernière version, compatible) : toujours 9 paniques (« Malformed allocator
+  state », `unwrap` sur `None`…) — mise à jour non retenue, elle ne corrige rien ;
+- `redb::Database::check_integrity()` à l'ouverture : panique lui-même sur 6 fichiers sur
+  306, et déclare « intègres » 247 fichiers abîmés (octet dans une page libre) — pas une
+  parade.
+
+C'est un défaut de redb, pas du code de STRATYX. Le contourner demanderait d'envelopper
+chaque opération de la base dans `catch_unwind` (décision d'architecture, et les paniques à
+la libération ne se rattrapent pas proprement) : non fait. Le test est commité **ignoré**,
+avec la limite documentée en en-tête, pour revérifier une future version de redb
+(`cargo test -p stratyx-database --test fichier_abime -- --ignored`).
+
+**Pistes suivantes.**
+
+- Signaler le défaut en amont (dépôt de redb) — action externe, à décider par l'utilisateur.
+- Parade côté application : la base pourrait être sauvegardée régulièrement avec
+  `stratyx_security::backup` (archives chiffrées vérifiées, robustes : itération 20).
