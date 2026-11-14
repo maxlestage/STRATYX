@@ -40,6 +40,36 @@ confidence-threshold = 0.9
 # Licences autorisées par avance pour les dépendances des phases suivantes.
 unused-allowed-license = "allow"
 
+# Nuage DB et l'ORM Memoire sont des crates propriétaires de l'auteur de STRATYX (même titulaire
+# des droits), tirés de leurs dépôts Git : leur licence est clarifiée et autorisée pour eux seuls
+# (décision T14, docs/decisions.md). Aucune autre licence propriétaire n'est admise.
+[[licenses.clarify]]
+crate = "nuage"
+expression = "LicenseRef-Nuage-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0xb5780bcb }]
+
+[[licenses.clarify]]
+crate = "memoire-orm"
+expression = "LicenseRef-Memoire-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0xbb6534cc }]
+
+[[licenses.clarify]]
+crate = "memoire-orm-derive"
+expression = "LicenseRef-Memoire-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0xbb6534cc }]
+
+[[licenses.exceptions]]
+crate = "nuage"
+allow = ["LicenseRef-Nuage-Proprietary"]
+
+[[licenses.exceptions]]
+crate = "memoire-orm"
+allow = ["LicenseRef-Memoire-Proprietary"]
+
+[[licenses.exceptions]]
+crate = "memoire-orm-derive"
+allow = ["LicenseRef-Memoire-Proprietary"]
+
 [licenses.private]
 # Les crates internes (publish = false) ne sont pas soumises au contrôle de licence.
 ignore = true
@@ -103,6 +133,9 @@ allow-build-scripts = [
     "crossbeam-utils",
     "getrandom",
     "libc",
+    # num-traits (via chrono ← memoire-orm ← nuage) : sonde rustc avec autocfg pour émettre
+    # `has_total_cmp` ; aucun code natif (relu le 2026-11-14, num-traits 0.2.19).
+    "num-traits",
     "proc-macro2",
     "quote",
     "rayon-core",
@@ -139,3 +172,8 @@ allow-globs = ["scripts/podman-sandbox.sh"]
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# Nuage DB (base locale, chantier Nuage) et l'ORM Memoire, dépôts de l'auteur (décision T14).
+allow-git = [
+    "https://github.com/maxlestage/Nuage",
+    "https://github.com/maxlestage/Memoire",
+]

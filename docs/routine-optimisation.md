@@ -784,3 +784,39 @@ démarrage, pages toujours servies. Lint natif et WebAssembly, 17 tests du site,
 **Reste à faire (utilisateur).** Créer un seau S3 gratuit et ajouter les secrets `NUAGE_*`
 (site/README.md, « Base de données »), sinon la base est perdue à chaque redémarrage.
 L'ancien secret GitHub `DATABASE_URL` (Neon) peut être supprimé.
+
+## Chantier Nuage — la base locale passe dans Nuage DB (décision T14)
+
+Demande de l'utilisateur : « Déplace tout … sert t'en de base de données ». Plan accepté, en
+trois chantiers :
+
+1. **Memoire** : fonctionnalité `nuage-wire` (format d'échange seul) — *fait*, branche
+   `claude/nuage-wire` de Memoire (`074fbde`), à fusionner par l'utilisateur.
+2. **Nuage** : mode embarqué en Rust pur (RustCrypto à la place de `ring`, réseau et S3
+   optionnels) — *fait*, branche `claude/nuage-100-rust` de Nuage (`5fd8056`), compatible
+   avec les données chiffrées et les sauvegardes de la version précédente ; à fusionner.
+3. **STRATYX** : le crate `database` migre de redb vers Nuage, en étapes :
+   - **a** — dépendance optionnelle et audit — *fait (2026-11-14)* ;
+   - **b** — stockage Nuage complet derrière la fonctionnalité `nuage` (mains, requêtes,
+     utilisateurs, stratégie, import, confidentialité, migrations), mêmes tests sur les deux
+     stockages ;
+   - **c** — Nuage par défaut, import automatique des anciennes bases redb, retrait de redb.
+
+### Étape a (2026-11-14)
+
+- `database/Cargo.toml` : `nuage` (révision `5fd8056`, `default-features = false`) optionnel,
+  derrière la fonctionnalité `nuage`, désactivée par défaut. Arbre : 74 crates, ni `ring`, ni
+  `cc`, ni `rustls`, ni `hyper`, ni `tokio`.
+- `deny.toml` : sources Git `maxlestage/Nuage` et `maxlestage/Memoire` autorisées ; licence
+  propriétaire de `nuage`, `memoire-orm` et `memoire-orm-derive` clarifiée par l'empreinte de
+  leur `LICENSE` et autorisée pour eux seuls ; script de build de `num-traits` (sonde de
+  `rustc`) approuvé après relecture. Décision T14 dans `docs/decisions.md`.
+- Première pièce de l'étape b : `database/src/nuage_store.rs` ouvre le moteur embarqué et y
+  garde la version du schéma (table `meta`) ; test de réouverture.
+- CI : lint et tests du crate `database` avec `--features nuage` (job Linux).
+
+**Vérifié.** `cargo deny check` : advisories, bans, licences et sources ok. Lint et tests du
+workspace ; lint et tests de `stratyx-database --features nuage` (dont le nouveau test).
+
+**Prochaine étape (b).** Les mains (`put_hand`, `get_hand`, `count_hands`, `hand_summary`)
+dans Nuage, avec un test commun exécuté sur redb et sur Nuage.
