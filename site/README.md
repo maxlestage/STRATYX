@@ -144,7 +144,8 @@ créées à la première requête.
 
 L'adresse doit être en `https://` : le jeton accompagne chaque requête, et une adresse en
 `http://` est refusée au démarrage (sauf vers `localhost` ou `127.0.0.1`, pour un serveur
-local de développement).
+local de développement). Une adresse IPv6 s'écrit entre crochets
+(`https://[2001:db8::1]:8443`).
 
 Le site redémarre et écrit dans le serveur. Si le serveur ne répond pas ou refuse le jeton,
 les formulaires affichent « indisponible » et le journal du site dit pourquoi.
