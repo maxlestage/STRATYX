@@ -649,11 +649,11 @@ fn page(chemin: &str, titre: &str, description: &str, contenu: Vec<Node>) -> Pag
                 .json_ld(json_ld),
         )
         .plain()
-        .stylesheet(
-            "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap",
-        )
         .stylesheet("/style.css")
         .head(concat!(
+            // Les polices du site (public/fonts), demandées dès le début du chargement.
+            r#"<link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin/>"#,
+            r#"<link rel="preload" href="/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin/>"#,
             r#"<link rel="icon" href="/favicon.svg" type="image/svg+xml"/>"#,
             r#"<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"/>"#,
             r#"<meta name="color-scheme" content="dark"/>"#,
@@ -2445,11 +2445,7 @@ fn app() -> App {
             .header("content-type", "text/javascript; charset=utf-8")
             .header("cache-control", "no-cache")
             .header("service-worker-allowed", "/")
-            // Le worker garde les polices Google : il doit pouvoir les télécharger.
-            .header(
-                "content-security-policy",
-                "default-src 'self'; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com",
-            )
+            .header("content-security-policy", "default-src 'self'")
             .send(pwa::service_worker())
     });
     app.health("/health");
@@ -2691,6 +2687,58 @@ mod tests {
         assert!(sw.contains("SKIP_WAITING"));
         assert_eq!(client.get("/sitemap.xml").await.status(), 200);
         assert_eq!(client.get("/health").await.status(), 200);
+    }
+
+    /// « Aucun traceur tiers » (page de confidentialité) : aucune page, ni la feuille de style,
+    /// ni le service worker, ni la politique de sécurité ne nomme un autre site pour ses
+    /// ressources ; les polices viennent de `public/fonts`.
+    #[tokio::test]
+    async fn aucune_ressource_ne_vient_d_un_tiers() {
+        let client = app().test().await;
+        let chemins = PAGES.iter().map(|(c, _)| *c).chain(["/app", "/hors-ligne"]);
+        for chemin in chemins {
+            let res = client.get(chemin).await;
+            let csp = res.header("content-security-policy").unwrap_or_default();
+            assert!(
+                !csp.contains("googleapis") && !csp.contains("gstatic"),
+                "{chemin} : {csp}"
+            );
+            assert!(csp.contains("font-src 'self'"), "{chemin} : {csp}");
+            let html = res.text();
+            for balise in html.split('<').filter(|b| {
+                b.starts_with("link ") || b.starts_with("script ") || b.starts_with("img ")
+            }) {
+                let externe = ["href=\"http", "src=\"http", "href=\"//", "src=\"//"]
+                    .iter()
+                    .any(|m| balise.contains(m));
+                let ressource = !balise.contains("rel=\"canonical\"");
+                assert!(!(externe && ressource), "{chemin} : <{balise}");
+            }
+            assert!(html.contains("/fonts/inter-latin.woff2"), "{chemin}");
+        }
+        let css = client.get("/style.css").await.text();
+        assert!(
+            !css.contains("url(\"http") && !css.contains("@import"),
+            "style.css"
+        );
+        assert_eq!(css.matches("@font-face").count(), 4);
+        let sw = client.get("/sw.js").await;
+        assert_eq!(
+            sw.header("content-security-policy"),
+            Some("default-src 'self'")
+        );
+        assert!(!sw.text().contains("https://"), "sw.js");
+        for police in [
+            "inter-latin",
+            "inter-latin-ext",
+            "space-grotesk-latin",
+            "space-grotesk-latin-ext",
+        ] {
+            let res = client.get(&format!("/fonts/{police}.woff2")).await;
+            assert_eq!(res.status(), 200, "{police}");
+            assert_eq!(res.header("content-type"), Some("font/woff2"), "{police}");
+            assert!(css.contains(&format!("/fonts/{police}.woff2")), "{police}");
+        }
     }
 
     #[tokio::test]

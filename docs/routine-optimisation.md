@@ -1107,3 +1107,47 @@ Toutes les commandes de la CI, workspace et site.
 
 **Pistes suivantes.** Le client du site n'a plus de piste ouverte. En amont (Nuage) :
 fermeture qui attend le fil d'entretien (itération 32).
+
+## 2026-11-14 — Itération 34 : polices servies par le site (plus aucune requête vers Google)
+
+**CI.** Celle de l'itération 33 (`f7177e2`) est verte et fusionnée dans master (non
+vérifié : si le test `un_serveur_en_ipv6_est_joint` s'y est exécuté ou déclaré sans objet).
+
+**Trouvé.** Chaque page chargeait ses polices (Inter, Space Grotesk) depuis
+`fonts.googleapis.com` puis `fonts.gstatic.com` : l'adresse IP de chaque visiteur partait
+chez Google, alors que la page « Confidentialité » annonce « aucun traceur tiers ». C'était
+aussi une feuille de style bloquante sur un autre site (deux connexions de plus avant le
+premier texte) et deux origines ouvertes dans la politique de sécurité.
+
+**Fait.**
+- `site/public/fonts/` : les quatre fichiers woff2 (polices variables, latin et latin
+  étendu, tels que distribués par Google Fonts) et `LICENCE.txt` (SIL Open Font License 1.1,
+  auteurs). `@font-face` en tête de `style.css`, mêmes plages de caractères
+  (`unicode-range`) : le latin étendu n'est téléchargé que si une page en a besoin.
+- Pages : plus de feuille de style externe ; les deux polices latines sont préchargées.
+- Service worker : les deux polices latines sont gardées dès l'installation (hors ligne dès
+  la première visite) ; le cache séparé des polices Google et son code disparaissent
+  (l'ancien cache est supprimé à l'activation).
+- Aucun texte du site à changer : la page de confidentialité dit maintenant vrai.
+
+**Mesuré** (Chromium, pages `/` et `/app` servies en local) :
+
+| | Avant | Après |
+|---|---:|---:|
+| origines contactées | 3 (site, googleapis, gstatic) | 1 |
+| feuilles de style bloquantes hors du site | 1 | 0 |
+| origines tierces dans la politique de sécurité (pages, `sw.js`) | 2 | 0 |
+| polices téléchargées par page | 2 (chez Google) | 2 (70 Ko, sur le site) |
+
+Les deux polices sont bien chargées et appliquées (`document.fonts`, familles calculées du
+corps et des titres), sans erreur de console. Poids du dépôt : +175 Ko. Le temps gagné sur
+un vrai réseau n'est pas mesurable d'ici (pas d'accès direct à Google depuis le bac à sable).
+
+**Vérifié.** Nouveau test `aucune_ressource_ne_vient_d_un_tiers` : chaque page (plan du
+site, `/app`, `/hors-ligne`), `style.css`, `sw.js` et les politiques de sécurité ne nomment
+aucun autre site pour une ressource ; les quatre polices répondent en `font/woff2`. Toutes
+les commandes de la CI, workspace et site.
+
+**Pistes suivantes.** Fichiers statiques servis avec `cache-control: max-age=0` (une
+revalidation par fichier à chaque visite sans service worker) : une durée plus longue pour
+les polices et les icônes, qui ne changent pas, est à étudier (réglage de Paquets ?).

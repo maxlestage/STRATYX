@@ -59,7 +59,8 @@ Le site est une PWA complète, sans une ligne de JavaScript écrite à la main d
 - **Service worker** (`/sw.js`) : chaque page du plan du site, `/app`, la page
   `/hors-ligne`, la feuille de style, les icônes et le bundle WebAssembly sont gardés dès
   l'installation ; les pages passent d'abord par le réseau, le reste est servi depuis le
-  cache et mis à jour derrière ; les polices Google sont gardées à part. La version du
+  cache et mis à jour derrière ; les polices (`public/fonts`, servies par le site) sont
+  gardées avec le reste. La version du
   cache est un hachage de ce qu'il garde : chaque déploiement installe un nouveau worker.
 - **Dans la page** (`src/mouvement.rs`, en Rust) : enregistrement du worker, message
   « Nouvelle version disponible » avec mise à jour en un clic, messages hors ligne / en

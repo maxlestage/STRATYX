@@ -24,8 +24,10 @@ const PAGES_EN_PLUS: [&str; 1] = [HORS_LIGNE];
 const BUNDLE: [&str; 2] = ["/pkg/stratyx_site.js", "/pkg/stratyx_site_bg.wasm"];
 
 /// Les fichiers statiques gardés dès l'installation.
-const STATIQUES: [&str; 6] = [
+const STATIQUES: [&str; 8] = [
     "/style.css",
+    "/fonts/inter-latin.woff2",
+    "/fonts/space-grotesk-latin.woff2",
     "/favicon.svg",
     "/manifest.webmanifest",
     "/icons/icon-192.png",
@@ -204,12 +206,10 @@ const SCRIPT: &str = r#"// Service worker de STRATYX : chaque page, le moteur en
 const VERSION = "__VERSION__";
 const PREFIXE = "stratyx-";
 const CACHE = PREFIXE + "site-" + VERSION;
-const POLICES = PREFIXE + "polices";
 const PRECACHE = __PRECACHE__;
 const HORS_LIGNE = "__HORS_LIGNE__";
 // Toujours le réseau (en plus des requêtes POST : formulaires).
 const RESEAU = ["/health"];
-const POLICES_ORIGINES = ["https://fonts.googleapis.com", "https://fonts.gstatic.com"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -228,7 +228,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
       .then((cles) => Promise.all(
-        cles.filter((cle) => cle.startsWith(PREFIXE) && cle !== CACHE && cle !== POLICES)
+        cles.filter((cle) => cle.startsWith(PREFIXE) && cle !== CACHE)
           .map((cle) => caches.delete(cle)),
       ))
       .then(() => self.clients.claim()),
@@ -252,17 +252,6 @@ self.addEventListener("fetch", (event) => {
   if (requete.method !== "GET") return;
   const url = new URL(requete.url);
 
-  // Les polices : d'abord le cache, gardées d'une version à l'autre.
-  if (POLICES_ORIGINES.includes(url.origin)) {
-    event.respondWith(
-      caches.open(POLICES).then((cache) => cache.match(requete).then((vue) => vue || fetch(requete)
-        .then((reponse) => {
-          if (reponse.ok || reponse.type === "opaque") cache.put(requete, reponse.clone());
-          return reponse;
-        }))),
-    );
-    return;
-  }
   if (url.origin !== self.location.origin) return;
   if (RESEAU.some((chemin) => url.pathname.startsWith(chemin))) return;
 
