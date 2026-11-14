@@ -1,9 +1,8 @@
 [package]
 name = "stratyx-database"
-description = "Persistance locale (redb) des bases Expresso, Tournois, Hold'em, Stratégie et Utilisateurs ; import et export des historiques texte."
+description = "Persistance locale (Nuage DB) des bases Expresso, Tournois, Hold'em, Stratégie et Utilisateurs ; import et export des historiques texte."
 version.workspace = true
 edition.workspace = true
-# redb 4 exige Rust 1.90 (la chaîne d'outils du projet suit la version stable).
 rust-version.workspace = true
 publish.workspace = true
 repository.workspace = true
@@ -14,19 +13,20 @@ stratyx-poker.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-# Base embarquée transactionnelle en Rust pur (décision T3).
-redb = { version = "4.4", default-features = false, features = ["std"] }
 # SHA-256 en Rust pur (RustCrypto), sans assembleur ni identifiants OID.
 sha2 = { version = "0.11", default-features = false }
-# Nuage DB embarqué (moteur seul, `default-features = false` : Rust pur, sans réseau), futur
-# stockage de la base locale (chantier Nuage, docs/routine-optimisation.md). Optionnel tant que
-# le stockage redb reste celui par défaut. Épinglé sur la branche `claude/nuage-100-rust` de
-# Nuage (moteur embarqué sans ring), non encore fusionnée.
-nuage = { git = "https://github.com/maxlestage/Nuage", rev = "5fd8056", default-features = false, optional = true }
+# Nuage DB embarqué : la base locale (décision T14). Moteur seul (`default-features = false`) :
+# Rust pur, sans réseau, chiffrement RustCrypto.
+nuage = { git = "https://github.com/maxlestage/Nuage", rev = "23eb6fc", default-features = false }
+# Les valeurs des lignes SQL de Nuage (même crate que celui de Nuage, aucune dépendance de plus).
+memoire-orm = { git = "https://github.com/maxlestage/Memoire", rev = "074fbde", default-features = false }
+# Ancien stockage (redb, décision T3), lu une seule fois pour importer une ancienne base.
+redb = { version = "4.4", default-features = false, features = ["std"], optional = true }
 
 [features]
-## Le stockage Nuage DB (en cours de construction ; redb reste le stockage par défaut).
-nuage = ["dep:nuage"]
+default = ["import-redb"]
+## Import automatique d'une ancienne base redb à son ouverture (fichier unique).
+import-redb = ["dep:redb"]
 
 [dev-dependencies]
 # Fuzzing déterministe de l'import (tests/import_robustesse.rs).

@@ -5,13 +5,10 @@ use thiserror::Error;
 /// Erreur renvoyée par [`Database`](crate::Database).
 #[derive(Debug, Error)]
 pub enum DatabaseError {
-    /// Erreur du moteur de stockage redb (fichier, transaction, table).
+    /// Erreur du moteur de stockage Nuage DB (dossier, transaction, requête), ou de la
+    /// lecture d'une ancienne base redb à importer.
     #[error("stockage : {0}")]
-    Storage(#[source] Box<redb::Error>),
-    /// Erreur du moteur Nuage DB (stockage en construction, décision T14).
-    #[cfg(feature = "nuage")]
-    #[error("stockage Nuage : {0}")]
-    Nuage(String),
+    Storage(String),
     /// Donnée impossible à sérialiser ou à relire.
     #[error("sérialisation JSON : {0}")]
     Json(#[from] serde_json::Error),
@@ -50,22 +47,3 @@ pub enum DatabaseError {
 
 /// Raccourci pour les résultats de ce crate.
 pub type Result<T, E = DatabaseError> = std::result::Result<T, E>;
-
-macro_rules! storage_error {
-    ($($t:ty),* $(,)?) => {$(
-        impl From<$t> for DatabaseError {
-            fn from(e: $t) -> Self {
-                DatabaseError::Storage(Box::new(e.into()))
-            }
-        }
-    )*};
-}
-
-storage_error!(
-    redb::Error,
-    redb::DatabaseError,
-    redb::TransactionError,
-    redb::TableError,
-    redb::StorageError,
-    redb::CommitError,
-);

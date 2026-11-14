@@ -1,9 +1,5 @@
 //! Recherche de mains par filtres combinables, avec pagination.
 
-use std::collections::BTreeSet;
-use std::ops::Bound;
-
-use redb::{ReadTransaction, ReadableDatabase, ReadableTable};
 use serde::{Deserialize, Serialize};
 use stratyx_poker::game::BettingStructure;
 use stratyx_poker::{GameFormat, GameType};
@@ -11,8 +7,7 @@ use stratyx_poker::{GameFormat, GameType};
 use crate::error::Result;
 use crate::space::Space;
 use crate::status::{HandSummary, ValidationKind};
-use crate::store::{Database, from_json, space_tables};
-use crate::tables::{HandTables, IndexTable, STATUS_TO_REVIEW};
+use crate::store::{Database, from_json};
 
 /// Résultat du héros sur une main résolue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -252,34 +247,52 @@ impl Database {
     /// Recherche des mains. Les résultats sont triés par date (voir [`SortOrder`]), puis par
     /// identifiant ; la pagination s'applique après le tri.
     pub fn search(&self, query: &HandQuery) -> Result<HandPage> {
-        let txn = self.db.begin_read()?;
+        // Les colonnes indexées réduisent les candidats ; `matches` vérifie ensuite chaque
+        // filtre sur le résumé (salle, résultat du héros, abattage, type de partie…).
+        let mut conditions: Vec<&str> = Vec::new();
+        let mut params: Vec<serde_json::Value> = Vec::new();
+        if let Some(space) = query.space {
+            conditions.push("espace = ?");
+            params.push(space.code().into());
+        }
+        if let Some(session) = &query.session_id {
+            conditions.push("session = ?");
+            params.push(session.as_str().into());
+        }
+        if let Some(player) = &query.player {
+            conditions.push("id IN (SELECT main FROM main_joueur WHERE joueur = ?)");
+            params.push(player.as_str().into());
+        }
+        if let Some(review) = query.needs_review {
+            conditions.push("a_revoir = ?");
+            params.push(u8::from(review).into());
+        }
+        if let Some(kind) = query.validation {
+            conditions.push("validation = ?");
+            params.push(kind.key().into());
+        }
+        if let Some(format) = query.format {
+            conditions.push("format = ?");
+            params.push(format_key(format).into());
+        }
+        if let Some(from) = query.played_from_ms {
+            conditions.push("joue_le >= ?");
+            params.push(from.into());
+        }
+        if let Some(until) = query.played_until_ms {
+            conditions.push("joue_le < ?");
+            params.push(until.into());
+        }
+        let mut sql = String::from("SELECT resume FROM main");
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
+        }
         let mut items = Vec::new();
-        for space in Space::HAND_SPACES {
-            if query.space.is_some_and(|s| s != space) {
-                continue;
-            }
-            let t = space_tables(space)?;
-            let summaries = txn.open_table(t.summaries)?;
-            match candidates(&txn, &t, query)? {
-                Some(ids) => {
-                    for id in ids {
-                        if let Some(v) = summaries.get(id.as_str())? {
-                            let s: HandSummary = from_json(v.value())?;
-                            if query.matches(&s) {
-                                items.push(s);
-                            }
-                        }
-                    }
-                }
-                None => {
-                    for entry in summaries.iter()? {
-                        let (_, v) = entry?;
-                        let s: HandSummary = from_json(v.value())?;
-                        if query.matches(&s) {
-                            items.push(s);
-                        }
-                    }
-                }
+        for json in self.read()?.texts(&sql, &params)? {
+            let s: HandSummary = from_json(json.as_bytes())?;
+            if query.matches(&s) {
+                items.push(s);
             }
         }
         items.sort_by(|a, b| {
@@ -302,54 +315,6 @@ impl Database {
             .collect();
         Ok(HandPage { total, items })
     }
-}
-
-/// Identifiants candidats d'après l'index le plus sélectif disponible ; `None` : parcours
-/// complet de l'espace.
-fn candidates(
-    txn: &ReadTransaction,
-    t: &HandTables,
-    q: &HandQuery,
-) -> Result<Option<BTreeSet<String>>> {
-    let lookup = |def: IndexTable, key: &str| -> Result<Option<BTreeSet<String>>> {
-        let table = txn.open_multimap_table(def)?;
-        let mut ids = BTreeSet::new();
-        for v in table.get(key)? {
-            ids.insert(v?.value().to_string());
-        }
-        Ok(Some(ids))
-    };
-    if let Some(session) = &q.session_id {
-        return lookup(t.by_session, session);
-    }
-    if let Some(player) = &q.player {
-        return lookup(t.by_player, player);
-    }
-    if q.needs_review == Some(true) {
-        return lookup(t.by_status, STATUS_TO_REVIEW);
-    }
-    if let Some(kind) = q.validation {
-        return lookup(t.by_status, kind.key());
-    }
-    if let Some(format) = q.format {
-        return lookup(t.by_format, &format_key(format));
-    }
-    if q.played_from_ms.is_some() || q.played_until_ms.is_some() {
-        let table = txn.open_table(t.by_date)?;
-        let lower = q
-            .played_from_ms
-            .map_or(Bound::Unbounded, |from| Bound::Included((from, "")));
-        let upper = q
-            .played_until_ms
-            .map_or(Bound::Unbounded, |until| Bound::Excluded((until, "")));
-        let mut ids = BTreeSet::new();
-        for entry in table.range::<(u64, &str)>((lower, upper))? {
-            let (k, _) = entry?;
-            ids.insert(k.value().1.to_string());
-        }
-        return Ok(Some(ids));
-    }
-    Ok(None)
 }
 
 #[cfg(test)]

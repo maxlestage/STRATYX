@@ -21,7 +21,7 @@ use stratyx_shared::{Chips, Confidence, Observed, Source};
 
 const CASH: &str = include_str!("data/pokerstars_cash_nl6.txt");
 
-/// Fichier temporaire unique, supprimé à la fin du test.
+/// Dossier de base temporaire unique, supprimé à la fin du test.
 struct TempFile(PathBuf);
 
 impl TempFile {
@@ -30,15 +30,13 @@ impl TempFile {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        TempFile(
-            std::env::temp_dir().join(format!("stratyx-{tag}-{}-{nanos}.redb", std::process::id())),
-        )
+        TempFile(std::env::temp_dir().join(format!("stratyx-{tag}-{}-{nanos}", std::process::id())))
     }
 }
 
 impl Drop for TempFile {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
+        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

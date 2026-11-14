@@ -2,9 +2,9 @@
 //!
 //! # Base locale
 //!
-//! [`Database`] ouvre un **fichier redb unique** (base embarquée transactionnelle en Rust pur,
-//! décision T3), organisé en cinq espaces logiques ([`Space`]) qui reprennent les bases du
-//! cahier des charges (section 8) :
+//! [`Database`] ouvre un **dossier Nuage DB** (base embarquée transactionnelle en Rust pur,
+//! interrogée en SQL, décision T14), organisé en cinq espaces logiques ([`Space`]) qui
+//! reprennent les bases du cahier des charges (section 8) :
 //!
 //! | Espace | Contenu |
 //! |---|---|
@@ -41,6 +41,10 @@
 //! **Migrations.** La version du schéma ([`SCHEMA_VERSION`]) est stockée dans la base ; les
 //! migrations manquantes s'appliquent à l'ouverture, dans une seule transaction.
 //!
+//! **Anciennes bases.** Une base des versions précédentes (un fichier redb) est importée
+//! automatiquement à sa première ouverture avec [`Database::open`] ; le fichier d'origine est
+//! gardé à côté, renommé `<nom>.ancienne-redb` (fonctionnalité `import-redb`, par défaut).
+//!
 //! # Formats texte
 //!
 //! Le module [`text`] exporte et importe les historiques au format texte de PokerStars.
@@ -59,17 +63,15 @@ mod error;
 mod fingerprint;
 mod hex;
 mod ingest;
+mod legacy;
 mod migration;
-#[cfg(feature = "nuage")]
-#[allow(dead_code)] // Branché sur `Database` à l'étape b du chantier Nuage.
-mod nuage_store;
 mod privacy;
 mod query;
 mod space;
+mod sql;
 mod status;
 mod store;
 mod strategy;
-mod tables;
 pub mod text;
 mod users;
 
