@@ -161,7 +161,8 @@ Constat d'audit du 2026-11-04 sur la pile candidate du cahier des charges :
 - Serveur : PostgreSQL via SQLx. Le pilote est en Rust pur. PostgreSQL est un service externe,
   pas une bibliothèque liée au binaire.
 - Poste de travail et mobile : **redb**, base embarquée transactionnelle en Rust pur. SQLite est
-  exclu par D1.
+  exclu par D1. *Remplacé par Nuage DB embarqué (T14) ; redb ne sert plus qu'à importer une
+  ancienne base.*
 - Les quatre bases logiques (Expresso, Tournois, Stratégie, Utilisateurs) sont des espaces
   séparés. Le format pivot est `HandRecord` (JSON versionné).
 
@@ -277,13 +278,17 @@ chaque salle visée.
 
 ### T14 — Base locale dans Nuage DB, dépôts Git de l'auteur autorisés — *acceptée*
 
-**Choix.** La base locale (crate `database`, aujourd'hui redb, T3) migre vers **Nuage DB** en
-mode embarqué, la base de l'ORM Memoire, toutes deux écrites par l'auteur de STRATYX. Le
+**Choix.** La base locale (crate `database`, auparavant redb, T3) est une base **Nuage DB**
+en mode embarqué, la base de l'ORM Memoire, toutes deux écrites par l'auteur de STRATYX. Le
 moteur embarqué est compilé sans ses fonctionnalités par défaut : Rust pur, sans réseau, sans
-`ring` ni `cc` (chiffrement RustCrypto, T4). La migration se fait en trois temps : dépendance
-optionnelle derrière la fonctionnalité `nuage` ; stockage Nuage complet, testé contre les deux
-stockages ; Nuage par défaut avec import automatique des anciennes bases redb, puis retrait
-de redb.
+`ring` ni `cc` (chiffrement RustCrypto, T4). La base est un dossier, interrogé en SQL (valeurs
+toujours en paramètres) ; chaque opération est une transaction (`EmbeddedTransaction::sql`,
+ajouté à Nuage pour cela), les écritures sont sérialisées.
+
+**Anciennes bases.** Une base redb (un fichier) est importée automatiquement à sa première
+ouverture : le fichier est renommé `<nom>.ancienne-redb` et gardé en secours, tout son contenu
+est recopié dans une base Nuage créée à sa place, en une transaction ; en cas d'échec, rien
+n'est changé. redb ne sert plus qu'à cette lecture (fonctionnalité `import-redb`, par défaut).
 
 **Exceptions à `deny.toml` (T2), limitées à ces crates.** Les sources Git
 `github.com/maxlestage/Nuage` et `github.com/maxlestage/Memoire` sont autorisées (épinglées

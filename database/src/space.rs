@@ -89,6 +89,7 @@ impl Space {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn from_code(code: u8) -> Option<Space> {
         Space::ALL.into_iter().find(|s| s.code() == code)
     }
