@@ -246,13 +246,37 @@ mod base {
                     return Err(format!("NUAGE_URL doit commencer par https:// : {url}"));
                 };
                 let autorite = reste.split('/').next().unwrap_or_default();
-                let (hote, port) = match autorite.rsplit_once(':') {
-                    Some((h, p)) => (
-                        h.to_owned(),
-                        p.parse().map_err(|_| format!("port invalide dans {url}"))?,
-                    ),
-                    None => (autorite.to_owned(), if https { 443 } else { 80 }),
+                // Une adresse IPv6 est entre crochets (`[::1]:8080`) : ses `:` ne séparent pas
+                // le port. L'hôte est gardé sans crochets (connexion, nom TLS).
+                let (hote, port) = if let Some(r) = autorite.strip_prefix('[') {
+                    let (ip, suite) = r
+                        .split_once(']')
+                        .ok_or_else(|| format!("crochet non fermé dans {url}"))?;
+                    ip.parse::<std::net::Ipv6Addr>()
+                        .map_err(|_| format!("adresse IPv6 invalide dans {url}"))?;
+                    match suite.strip_prefix(':') {
+                        Some(p) => (ip, Some(p)),
+                        None if suite.is_empty() => (ip, None),
+                        None => return Err(format!("port invalide dans {url}")),
+                    }
+                } else {
+                    let (hote, port) = match autorite.rsplit_once(':') {
+                        Some((h, p)) => (h, Some(p)),
+                        None => (autorite, None),
+                    };
+                    if hote.contains(':') {
+                        return Err(format!(
+                            "adresse IPv6 à mettre entre crochets dans NUAGE_URL : {url}"
+                        ));
+                    }
+                    (hote, port)
                 };
+                let port = match port {
+                    Some(p) => p.parse().map_err(|_| format!("port invalide dans {url}"))?,
+                    None if https => 443,
+                    None => 80,
+                };
+                let hote = hote.to_owned();
                 if hote.is_empty() {
                     return Err(format!("NUAGE_URL sans hôte : {url}"));
                 }
@@ -294,10 +318,16 @@ mod base {
             }
 
             async fn envoyer(&self, corps: String) -> Result<Json, String> {
-                let hote = if self.port == if self.https { 443 } else { 80 } {
-                    self.hote.clone()
+                // En-tête `Host` : une adresse IPv6 reprend ses crochets.
+                let hote = if self.hote.contains(':') {
+                    format!("[{}]", self.hote)
                 } else {
-                    format!("{}:{}", self.hote, self.port)
+                    self.hote.clone()
+                };
+                let hote = if self.port == if self.https { 443 } else { 80 } {
+                    hote
+                } else {
+                    format!("{hote}:{}", self.port)
                 };
                 let requete = hyper::Request::post("/v1/sql")
                     .header("host", hote)
@@ -361,7 +391,19 @@ mod base {
                 statut: &str,
                 reponse: &str,
             ) -> (String, tokio::task::JoinHandle<String>) {
-                let ecoute = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                faux_serveur_sur("127.0.0.1:0", statut, reponse)
+                    .await
+                    .unwrap()
+            }
+
+            /// Le faux serveur à l'écoute de `adresse` ; `None` si la machine n'a pas cette
+            /// adresse (IPv6 absent).
+            async fn faux_serveur_sur(
+                adresse: &str,
+                statut: &str,
+                reponse: &str,
+            ) -> Option<(String, tokio::task::JoinHandle<String>)> {
+                let ecoute = tokio::net::TcpListener::bind(adresse).await.ok()?;
                 let url = format!("http://{}", ecoute.local_addr().unwrap());
                 let (statut, reponse) = (statut.to_owned(), reponse.to_owned());
                 let tache = tokio::spawn(async move {
@@ -393,7 +435,45 @@ mod base {
                     flux.write_all(http.as_bytes()).await.unwrap();
                     String::from_utf8_lossy(&recu).into_owned()
                 });
-                (url, tache)
+                Some((url, tache))
+            }
+
+            #[tokio::test]
+            async fn un_serveur_en_ipv6_est_joint() {
+                let Some((url, tache)) =
+                    faux_serveur_sur("[::1]:0", "200 OK", r#"{"rows":[[3]]}"#).await
+                else {
+                    eprintln!("pas d'IPv6 sur cette machine : test sans objet");
+                    return;
+                };
+                assert!(url.starts_with("http://[::1]:"), "{url}");
+                let serveur = Serveur::new(&url, "j".into()).unwrap();
+                let reponse = serveur.sql("SELECT 3", Vec::new()).await.unwrap();
+                assert_eq!(reponse["rows"][0][0], json!(3));
+                let recu = tache.await.unwrap();
+                let port = url.rsplit_once(':').unwrap().1;
+                assert!(recu.contains(&format!("host: [::1]:{port}\r\n")), "{recu}");
+            }
+
+            #[test]
+            fn les_adresses_ipv6_sont_entre_crochets() {
+                let s = Serveur::new("https://[2001:db8::1]", "j".into()).unwrap();
+                assert_eq!((s.hote.as_str(), s.port), ("2001:db8::1", 443));
+                let s = Serveur::new("https://[2001:db8::1]:8443/", "j".into()).unwrap();
+                assert_eq!((s.hote.as_str(), s.port), ("2001:db8::1", 8443));
+                let s = Serveur::new("http://[::1]:8080", "j".into()).unwrap();
+                assert_eq!((s.hote.as_str(), s.port), ("::1", 8080));
+                for url in [
+                    "http://[2001:db8::1]:8080", // en clair, hors de la machine
+                    "https://[::1",
+                    "https://[::1]8080",
+                    "https://[::1]:port",
+                    "https://[nuage.example.com]",
+                    "https://2001:db8::1",
+                    "https://::1",
+                ] {
+                    assert!(Serveur::new(url, "j".into()).is_err(), "{url}");
+                }
             }
 
             #[tokio::test]
