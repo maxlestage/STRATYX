@@ -729,3 +729,24 @@ avec la limite documentée en en-tête, pour revérifier une future version de r
 - Signaler le défaut en amont (dépôt de redb) — action externe, à décider par l'utilisateur.
 - Parade côté application : la base pourrait être sauvegardée régulièrement avec
   `stratyx_security::backup` (archives chiffrées vérifiées, robustes : itération 20).
+
+## 2026-11-14 — Itération 27 : dépendances à jour (versions compatibles)
+
+**CI.** Celle de l'itération 25 est verte et fusionnée (rien de poussé à l'itération 26).
+
+**Changement** (`Cargo.lock` du workspace) : `cargo update` — errno 0.3.15, inout 0.2.6,
+itoa 1.0.19, **redb 4.6.0** (au lieu de 4.4.0), **sha2 0.11.1**, syn 3.0.10, wasip2 1.0.4,
+wit-bindgen 0.57.1 ; toutes compatibles semver, en Rust pur. Le site (Paquets en Git) n'a pas
+de mise à jour.
+
+**Vérifications.** fmt, clippy et 304 tests verts, évaluateur exhaustif vert ; entraînement
+`--rapide` : modèles identiques (hors date), les flux aléatoires ne changent pas. **Fichiers
+de base existants** : une base écrite avec redb 4.4 se relit avec 4.6 (2 mains présentes) et
+accepte une écriture. `cargo deny` n'a pas pu tourner en local : c'est le job d'audit de la
+CI qui vérifie la règle 100 % Rust et les licences.
+
+redb 4.6 ne corrige pas les paniques de l'itération 25 sur fichiers abîmés (test toujours
+ignoré).
+
+**Pistes suivantes.** En attente de la décision de l'utilisateur sur la suite de la routine
+(espacer, réorienter vers des fonctionnalités, ou arrêter).
