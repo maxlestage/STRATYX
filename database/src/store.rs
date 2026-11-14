@@ -4,6 +4,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use nuage::{Embedded, EngineOptions};
 use serde::de::DeserializeOwned;
@@ -66,6 +67,31 @@ pub struct Database {
     pub(crate) writes: Mutex<()>,
     /// Dossier temporaire d'une base [`Database::in_memory`], supprimé avec elle.
     temp: Option<TempDir>,
+}
+
+/// Temps laissé à une base qu'on vient de fermer pour rendre son dossier.
+const OPEN_PATIENCE: Duration = Duration::from_secs(2);
+
+/// Ouvre le dossier `dir`, en attendant au plus [`OPEN_PATIENCE`] qu'il soit libre.
+///
+/// Une base fermée ne rend pas toujours son dossier à l'instant : le fil d'entretien de
+/// Nuage peut encore la tenir le temps de finir son passage (quelques millisecondes), et la
+/// rouvrir aussitôt échouait alors, par intermittence (« already open »). Une base
+/// réellement ouverte ailleurs (autre processus, autre poignée) reste refusée, après ce délai.
+fn open_when_free(dir: &Path, options: EngineOptions) -> Result<Embedded> {
+    let start = Instant::now();
+    loop {
+        match Embedded::open_with(dir, options.clone()) {
+            Ok(db) => return Ok(db),
+            Err(e) => {
+                let e = e.to_string();
+                if !e.contains("already open") || start.elapsed() >= OPEN_PATIENCE {
+                    return Err(DatabaseError::Storage(e));
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
 }
 
 /// Dossier supprimé à la fermeture de la base.
@@ -168,7 +194,7 @@ impl Database {
 
     pub(crate) fn open_dir(dir: &Path, options: EngineOptions) -> Result<Database> {
         let db = Database {
-            db: Embedded::open_with(dir, options).map_err(storage)?,
+            db: open_when_free(dir, options)?,
             review_threshold: Confidence::DEFAULT_REVIEW_THRESHOLD,
             writes: Mutex::new(()),
             temp: None,
