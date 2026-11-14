@@ -131,7 +131,7 @@ impl X11Capturer {
             )));
         }
         let stride = reply.data.len() / r.height as usize;
-        Ok(bgrx_to_rgba(&reply.data, r.width, r.height, stride))
+        bgrx_to_rgba(&reply.data, r.width, r.height, stride)
     }
 }
 

@@ -159,16 +159,35 @@ pub fn now_ms() -> u64 {
 
 /// Convertit des pixels BGRX/BGRA 32 bits (ordre des octets des API X11 et Windows) en
 /// RGBA opaque. `stride` est la longueur d'une ligne source en octets.
-#[must_use]
-pub fn bgrx_to_rgba(src: &[u8], width: u32, height: u32, stride: usize) -> Vec<u8> {
-    let mut out = Vec::with_capacity((width * height * 4) as usize);
+///
+/// # Errors
+/// [`CaptureError::PixelFormat`] si le tampon est trop court pour `width × height` pixels à
+/// ce pas (une réponse incomplète du système d'affichage faisait paniquer la capture).
+pub fn bgrx_to_rgba(
+    src: &[u8],
+    width: u32,
+    height: u32,
+    stride: usize,
+) -> Result<Vec<u8>, CaptureError> {
+    let row_len = width as usize * 4;
+    let needed = (height as usize).checked_sub(1).map_or(Some(0), |rows| {
+        rows.checked_mul(stride)
+            .and_then(|n| n.checked_add(row_len))
+    });
+    if stride < row_len || needed.is_none_or(|n| n > src.len()) {
+        return Err(CaptureError::PixelFormat(format!(
+            "tampon de {} octets trop court pour {width} × {height} pixels (pas de {stride} octets)",
+            src.len()
+        )));
+    }
+    let mut out = Vec::with_capacity(row_len * height as usize);
     for y in 0..height as usize {
         let row = &src[y * stride..y * stride + width as usize * 4];
         for px in row.as_chunks::<4>().0 {
             out.extend_from_slice(&[px[2], px[1], px[0], 255]);
         }
     }
-    out
+    Ok(out)
 }
 
 /// Intersecte une zone demandée avec une cible de taille `width × height`.
@@ -218,7 +237,7 @@ mod tests {
     fn pixel_conversion() {
         // 2×1 pixels, ligne source avec 4 octets de remplissage.
         let src = [10, 20, 30, 0, 40, 50, 60, 0, 9, 9, 9, 9];
-        let rgba = bgrx_to_rgba(&src, 2, 1, 12);
+        let rgba = bgrx_to_rgba(&src, 2, 1, 12).unwrap();
         assert_eq!(rgba, vec![30, 20, 10, 255, 60, 50, 40, 255]);
         let f = CapturedFrame {
             width: 2,
@@ -228,6 +247,20 @@ mod tests {
         };
         assert_eq!(f.pixel(1, 0), Some([60, 50, 40, 255]));
         assert_eq!(f.pixel(2, 0), None);
+    }
+
+    #[test]
+    fn short_buffers_are_errors() {
+        let src = [0u8; 4 * 3 * 2]; // 3 × 2 pixels, sans remplissage
+        assert!(bgrx_to_rgba(&src, 3, 2, 12).is_ok());
+        // Ligne plus longue que le pas, tampon trop court, pas démesuré : erreur, pas panique.
+        assert!(bgrx_to_rgba(&src, 4, 2, 12).is_err());
+        assert!(bgrx_to_rgba(&src, 3, 3, 12).is_err());
+        assert!(bgrx_to_rgba(&src, 3, 2, usize::MAX).is_err());
+        assert!(bgrx_to_rgba(&src[..20], 3, 2, 12).is_err());
+        // Dernière ligne sans remplissage : acceptée.
+        assert!(bgrx_to_rgba(&src[..12 + 12], 3, 2, 12).is_ok());
+        assert_eq!(bgrx_to_rgba(&[], 0, 0, 0).unwrap(), Vec::<u8>::new());
     }
 
     #[test]
