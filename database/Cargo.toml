@@ -6,6 +6,7 @@ edition.workspace = true
 # redb 4 exige Rust 1.90 (la chaîne d'outils du projet suit la version stable).
 rust-version.workspace = true
 publish.workspace = true
+repository.workspace = true
 
 [dependencies]
 stratyx-shared.workspace = true
