@@ -35,8 +35,16 @@ paquets = { git = "https://github.com/maxlestage/Paquets", default-features = fa
 # Moteur embarqué seul (`default-features = false` : ni serveur ni site web), plus `s3` pour
 # les sauvegardes vers un seau S3 (NUAGE_BACKUP_S3_*).
 nuage = { git = "https://github.com/maxlestage/Nuage", default-features = false, features = ["s3"] }
-# Pour l'export statique (déjà utilisé par Paquets).
-tokio = { version = "1", features = ["rt-multi-thread"] }
+# Pour l'export statique (déjà utilisé par Paquets), et le client du serveur Nuage DB.
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time"] }
+# Client HTTPS du serveur Nuage DB (`NUAGE_URL`, `NUAGE_TOKEN`) : les crates que Nuage utilise
+# déjà pour ses sauvegardes S3, aucune de plus dans l'arbre.
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+webpki-roots = "1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 paquets = { git = "https://github.com/maxlestage/Paquets", default-features = false, features = ["client"] }
