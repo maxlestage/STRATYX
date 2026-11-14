@@ -1027,3 +1027,27 @@ site (formatage, lint natif et WebAssembly, tests).
 **Pistes suivantes.** Borner la taille de la réponse lue du serveur (aujourd'hui seul le
 délai de 10 s la limite) ; adresses IPv6 entre crochets (`http://[::1]:8080`) non gérées par
 le découpage hôte/port.
+
+## 2026-11-14 — Itération 31 : réponse du serveur Nuage DB bornée à 1 Mio
+
+**CI.** Celle de l'itération 30 (`4fbef8d`) est verte et fusionnée dans master.
+
+**Trouvé.** Le client du serveur Nuage DB (`base::distant`) gardait en mémoire toute la
+réponse, sans limite : seul le délai de 10 s la bornait. Un serveur défaillant (ou une
+page d'erreur d'un intermédiaire) pouvait faire allouer au dyno du site (512 Mo) tout ce
+qu'il envoyait en 10 s, à chaque formulaire.
+
+**Fait.** Lecture par `http_body_util::Limited` (crate déjà présente), limite
+`REPONSE_MAX` = 1 Mio : le site ne lit que des comptes et des accusés d'écriture (quelques
+dizaines d'octets). Au-delà, la lecture s'arrête et l'erreur va au journal du site, comme
+les autres (« indisponible » pour le visiteur), que le statut soit 200 ou non.
+
+**Mesuré.** Réponse d'exactement 1 Mio : lue en entier ; 1 Mio + 1 octet : refusée
+(avant : acceptée sans limite), message d'erreur de moins de 200 caractères.
+
+**Vérifié.** Nouveau test `une_reponse_demesuree_est_abandonnee` (limite exacte, un octet
+de plus, statuts 200 et 500) ; les quatre autres tests du client passent. Toutes les
+commandes de la CI, workspace et site.
+
+**Pistes suivantes.** Adresses IPv6 entre crochets (`http://[::1]:8080`) non gérées par le
+découpage hôte/port de `NUAGE_URL`.
