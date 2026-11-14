@@ -581,3 +581,29 @@ dette repérée plutôt que la micro-performance.
 
 **Pistes suivantes.** En attente d'une décision de l'utilisateur sur la réorientation de la
 routine (fonctionnalités dans les crates squelettes, ou fréquence réduite).
+
+## 2026-11-14 — Itération 20 : sauvegardes chiffrées, toute altération refusée
+
+**CI.** Celle de l'itération 19 est verte et fusionnée.
+
+**Constat.** Les tests unitaires de `security/src/backup.rs` vérifiaient l'altération de
+4 octets et 3 coupures d'une archive de sauvegarde ; l'en-tête (identifiant de clé, nonce,
+paramètres) n'était pas couvert octet par octet.
+
+**Changement.** Nouveau test `security/tests/backup_robustesse.rs`, sur une archive de trois
+fichiers (dont un vide et un de ~150 Ko, sur plusieurs blocs), déverrouillée par clé (pas
+d'Argon2 à chaque essai) :
+
+- chaque octet des 4 premiers Kio (en-tête compris) puis un sur 97, modifié de deux façons
+  (`^0x01`, `^0x80`), et le dernier octet ;
+- une coupure à chaque position des 4 premiers Kio, puis une sur 61, et les 64 dernières ;
+  des octets ajoutés après la fin ;
+- une mauvaise clé.
+
+Chaque cas doit être refusé par `verify_backup` **et** par `restore_to_memory` (qui ne
+renvoie rien en cas d'échec), sans panique. Version exhaustive lancée une fois en local
+(chaque octet ×2 et chaque coupure, ~450 000 essais, 48 s en release) : tout est refusé.
+Aucune correction nécessaire.
+
+**Pistes suivantes.** En attente de la décision de l'utilisateur sur la réorientation de la
+routine (fonctionnalités dans les crates squelettes, ou fréquence réduite).
