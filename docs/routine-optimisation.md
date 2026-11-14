@@ -680,3 +680,20 @@ identiques (hors date).
 
 **Pistes suivantes.** En attente de la décision de l'utilisateur sur la réorientation de la
 routine (fonctionnalités dans les crates squelettes, ou fréquence réduite).
+
+## 2026-11-14 — Itération 24 : bilan de session et accessibilité vérifiés (pas de changement)
+
+**CI.** Celle de l'itération 23 est verte et fusionnée.
+
+- **Bilan de session sans main analysée** (`analytics/src/session.rs`) : tous les ratios et
+  moyennes sont protégés (`b == 0`, `max(1)`), et `skip()` incrémente aussi `hands`, donc
+  `hands - skipped` ne peut pas déborder. Rien à corriger.
+- **Accessibilité du HTML servi** (15 pages du serveur, analyse des boutons et liens sans
+  nom accessible, champs sans libellé, images sans `alt`) : deux signalements, tous deux
+  des faux positifs de l'audit — le champ piège anti-robots `site_web` a déjà
+  `tabindex="-1"`, `aria-hidden="true"` et `autocomplete="off"` ; les champs de fichier de
+  `/app` sont dans leur `<label>` (libellé implicite). L'unique image a son `alt`.
+
+**Pistes suivantes.** En attente de la décision de l'utilisateur sur la réorientation de la
+routine (fonctionnalités dans les crates squelettes, ou fréquence réduite) : les dernières
+itérations trouvent de moins en moins de défauts.
