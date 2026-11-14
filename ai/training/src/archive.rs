@@ -14,7 +14,7 @@
 //! (cahier des charges, section 8 ; points de vigilance de `docs/decisions.md`).
 
 use std::collections::HashSet;
-use std::io::{BufRead, Write};
+use std::io::Write;
 use std::path::Path;
 
 use stratyx_poker::Specialist;
@@ -50,33 +50,34 @@ pub fn load(dir: &Path, specialist: Specialist) -> std::io::Result<(Vec<HandReco
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
+        match ext.as_str() {
+            "txt" | "json" | "jsonl" => {}
+            _ => continue,
+        }
+        report.files += 1;
+        // Un fichier illisible (droits, sous-dossier nommé « x.json »…) compte comme
+        // invalide : il n'arrête plus la lecture des autres archives.
+        let Ok(bytes) = std::fs::read(&path) else {
+            report.invalid += 1;
+            continue;
+        };
         let records: Vec<HandRecord> = match ext.as_str() {
             "txt" => {
-                report.files += 1;
-                let bytes = std::fs::read(&path)?;
                 let text = String::from_utf8_lossy(&bytes);
                 let r = import_text(&text);
                 report.invalid += r.errors.len();
                 r.hands.into_iter().map(|h| h.record).collect()
             }
-            "json" => {
-                report.files += 1;
-                let text = std::fs::read_to_string(&path)?;
-                match serde_json::from_str::<Vec<HandRecord>>(&text) {
-                    Ok(v) => v,
-                    Err(_) => serde_json::from_str::<HandRecord>(&text)
-                        .map(|h| vec![h])
-                        .unwrap_or_else(|_| {
-                            report.invalid += 1;
-                            Vec::new()
-                        }),
-                }
-            }
-            "jsonl" => {
-                report.files += 1;
-                read_jsonl(&path, &mut report.invalid)?
-            }
-            _ => continue,
+            "json" => match serde_json::from_slice::<Vec<HandRecord>>(&bytes) {
+                Ok(v) => v,
+                Err(_) => serde_json::from_slice::<HandRecord>(&bytes)
+                    .map(|h| vec![h])
+                    .unwrap_or_else(|_| {
+                        report.invalid += 1;
+                        Vec::new()
+                    }),
+            },
+            _ => read_jsonl(&bytes, &mut report.invalid),
         };
         for r in records {
             report.read += 1;
@@ -98,20 +99,20 @@ pub fn load(dir: &Path, specialist: Specialist) -> std::io::Result<(Vec<HandReco
     Ok((out, report))
 }
 
-fn read_jsonl(path: &Path, invalid: &mut usize) -> std::io::Result<Vec<HandRecord>> {
-    let file = std::fs::File::open(path)?;
+/// Une main JSON par ligne ; une ligne illisible (JSON invalide, octets non UTF-8) compte
+/// comme invalide sans écarter les autres.
+fn read_jsonl(bytes: &[u8], invalid: &mut usize) -> Vec<HandRecord> {
     let mut out = Vec::new();
-    for line in std::io::BufReader::new(file).lines() {
-        let line = line?;
-        if line.trim().is_empty() {
+    for line in bytes.split(|b| *b == b'\n') {
+        if line.trim_ascii().is_empty() {
             continue;
         }
-        match serde_json::from_str(&line) {
+        match serde_json::from_slice(line) {
             Ok(r) => out.push(r),
             Err(_) => *invalid += 1,
         }
     }
-    Ok(out)
+    out
 }
 
 /// Écrit des mains en JSON Lines (une main par ligne).
@@ -125,4 +126,48 @@ pub fn write_jsonl(path: &Path, records: &[HandRecord]) -> std::io::Result<()> {
         f.write_all(b"\n")?;
     }
     f.flush()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use stratyx_poker::import::SAMPLE_WINAMAX;
+
+    #[test]
+    fn unreadable_files_do_not_stop_the_load() {
+        let dir = std::env::temp_dir().join(format!(
+            "stratyx-archives-{}-{}",
+            std::process::id(),
+            unique()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Une main Expresso valide en texte, et la même en JSON Lines (doublon).
+        std::fs::write(dir.join("a.txt"), SAMPLE_WINAMAX).unwrap();
+        let hand = import_text(SAMPLE_WINAMAX).hands.remove(0).record;
+        write_jsonl(&dir.join("b.jsonl"), std::slice::from_ref(&hand)).unwrap();
+        // Des fichiers abîmés : JSON non UTF-8, une ligne illisible au milieu d'un JSON
+        // Lines, un sous-dossier qui porte une extension d'archive, un fichier sans rapport.
+        std::fs::write(dir.join("c.json"), [0xff, 0xfe, b'[', 0x80]).unwrap();
+        let mut lines = serde_json::to_vec(&hand).unwrap();
+        lines.extend_from_slice(b"\n\xff\xfe pas du json\n\n");
+        std::fs::write(dir.join("d.jsonl"), lines).unwrap();
+        std::fs::create_dir_all(dir.join("piege.json")).unwrap();
+        std::fs::write(dir.join("notes.md"), "rien à lire").unwrap();
+
+        let (hands, report) = load(&dir, Specialist::Expresso3Max).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(hands.len(), 1, "{report:?}");
+        assert_eq!(report.files, 5, "{report:?}"); // a.txt b.jsonl c.json d.jsonl piege.json
+        assert_eq!(report.read, 3, "{report:?}");
+        assert_eq!(report.duplicates, 2, "{report:?}");
+        // c.json, la ligne abîmée de d.jsonl, et piege.json (illisible comme fichier).
+        assert_eq!(report.invalid, 3, "{report:?}");
+    }
+
+    /// Un suffixe propre à chaque appel (tests lancés en parallèle).
+    pub(super) fn unique() -> u64 {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
+        N.fetch_add(1, Ordering::Relaxed)
+    }
 }
