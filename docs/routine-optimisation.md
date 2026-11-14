@@ -929,3 +929,43 @@ validation de la transaction, pas le SQL.
 filtres indexés × 2 ordres × 4 pages, avec dates en double et mains sans date), la recherche
 par la base donne exactement le résultat du parcours un à un. Lint et tests du workspace,
 base sans `import-redb`, `cargo deny check`.
+
+## 2026-11-14 — Demande de l'utilisateur : optimiser Nuage DB (itération 29)
+
+**Mesuré** (nouvel exemple de Nuage `sql_bench`, 5 000 lignes, puis callgrind) : 88 % du
+temps d'une lecture par clé partait dans `serde_json` — chaque instruction relisait le JSON
+du catalogue de ses tables (`Ctx::meta`), puis le resérialisait pour retrouver le schéma
+(`SchemaCache::schema`).
+
+**Fait dans Nuage** (master `997927b`) :
+- cache des entrées du catalogue analysées, par leurs octets stockés (mêmes octets, même
+  table : exact sur toutes les branches et dans toute transaction), avec le schéma ;
+- `COUNT(*)` dont le filtre fixe exactement les colonnes d'un index : compté sur l'index ;
+- test : le compte par l'index égale le nombre de lignes (entiers, texte, NULL, littéral d'un
+  autre type, index de deux colonnes, écritures non validées) ; exemple `sql_bench`.
+- Essayé puis écarté : ne copier qu'une fois les tables d'une sous-requête (aucun gain
+  mesuré, les tables de Memoire sont déjà partagées).
+
+| Nuage, 5 000 lignes | Avant | Après |
+|---|---:|---:|
+| insertion (par ligne, en transaction) | 73 µs | 32 µs |
+| lecture par clé primaire | 37 µs | 8,5 µs |
+| `count(*)` | 29,6 µs | 3,6 µs |
+| `count(*)` sur colonne indexée (1/3) | 2,73 ms | 0,43 ms |
+| page de 20 clés (`IN`) | 69 µs | 42 µs |
+
+**STRATYX** passe à ce Nuage (base locale et site). `mesure_base -- 5000` :
+
+| Base locale, 5 000 mains | Avant | Après |
+|---|---:|---:|
+| écriture d'une main | 619 µs | 323 µs |
+| ingestion de 2 500 mains | 1,09 s | 0,63 s |
+| lecture d'une main | 34 µs | 21 µs |
+| revalidation | 4,5 s | 1,9 s |
+| recherche (pages de 20) | inchangée (à ±10 % près) | |
+
+**Vérifié.** Nuage : formatage, lint (toutes fonctionnalités, moteur seul, site en
+WebAssembly), tests, exemples des clients contre un serveur local (tous sauf C, faute
+d'en-têtes libcurl ici ; la CI de Nuage les installe). STRATYX : lint et tests du workspace,
+base sans `import-redb`, `cargo deny check` ; site : formatage, lint natif et WebAssembly,
+tests.
