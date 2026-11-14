@@ -151,12 +151,14 @@ fn run(args: &[String]) -> Result<(), String> {
             )?;
             let stacks: Vec<Chips> = stacks.into_iter().map(Chips).collect();
             let eq = icm_equities(&stacks, &payouts).map_err(|e| e.to_string())?;
-            let total: u64 = stacks.iter().map(|s| s.get()).sum();
+            // En f64 : des tapis géants feraient déborder une somme entière (c'est un
+            // affichage, la précision suffit).
+            let total: f64 = stacks.iter().map(|s| s.get() as f64).sum();
             for (i, (s, e)) in stacks.iter().zip(&eq).enumerate() {
                 println!(
                     "Joueur {} : tapis {s:>8} ({:>5.1} % des jetons)   équité ICM {e:>10.4}",
                     i + 1,
-                    s.get() as f64 / total as f64 * 100.0
+                    s.get() as f64 / total * 100.0
                 );
             }
         }
@@ -256,4 +258,94 @@ fn print_analysis(a: &stratyx_analytics::HandAnalysis) {
         println!("  → {t}");
     }
     println!();
+}
+
+#[cfg(test)]
+mod tests {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    use super::run;
+
+    fn args(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    /// `run`, avec la panique éventuelle convertie en message.
+    fn outcome(list: &[&str]) -> Result<Result<(), String>, String> {
+        catch_unwind(AssertUnwindSafe(|| run(&args(list)))).map_err(|e| {
+            e.downcast_ref::<String>()
+                .cloned()
+                .or_else(|| e.downcast_ref::<&str>().map(|s| (*s).to_owned()))
+                .unwrap_or_default()
+        })
+    }
+
+    #[test]
+    fn documented_examples_succeed() {
+        let sample = std::env::temp_dir().join("stratyx-cli-test-historique.txt");
+        std::fs::write(&sample, stratyx_poker::import::SAMPLE_POKERSTARS).unwrap();
+        let sample = sample.to_string_lossy().into_owned();
+        for example in [
+            &["eval", "AsKsQsJsTs9h2c"][..],
+            &["equity", "AhKh", "QQ+,AKo", "--board", "Qs7h2h"],
+            &[
+                "equity",
+                "AhKh",
+                "random",
+                "--samples",
+                "2000",
+                "--seed",
+                "3",
+            ],
+            &["range", "22+,A2s+,KTo+"],
+            &["icm", "--stacks", "5000,3000,2000", "--payouts", "50,30,20"],
+            &["analyse", &sample, "--joueur", "Hero"],
+            &["analyse", &sample, "--format", "json"],
+            &["help"],
+            &[],
+            // Tapis géants : la part des jetons affichée débordait (somme entière).
+            &[
+                "icm",
+                "--stacks",
+                "18446744073709551615,18446744073709551615",
+                "--payouts",
+                "50,30",
+            ],
+        ] {
+            assert_eq!(outcome(example), Ok(Ok(())), "{example:?}");
+        }
+        let huge = [stratyx_shared::Chips(u64::MAX); 2];
+        let eq = stratyx_poker::icm::icm_equities(&huge, &[50.0, 30.0]).unwrap();
+        assert!(eq.iter().all(|e| (e - 40.0).abs() < 1e-9), "{eq:?}");
+    }
+
+    #[test]
+    fn bad_arguments_are_errors_not_panics() {
+        for bad in [
+            &["nimporte"][..],
+            &["eval"],
+            &["eval", "AsAs"],
+            &["eval", "AsKsQsJsTs9h2c3d"],
+            &["eval", "Zz"],
+            &["equity", "AhKh"],
+            &["equity", "AhKh", "AhKd"],
+            &["equity", "AhKh", "QQ", "--board", "Qs7h"],
+            &["equity", "AhKh", "QQ", "--board", "AhQs7h"],
+            &["equity", "AhKh", "QQ", "--samples", "beaucoup"],
+            &["equity", "AhKh", "QQ", "--samples"],
+            &["range", "ZZ+"],
+            &["icm", "--stacks", "5000,3000"],
+            &["icm", "--stacks", "", "--payouts", "50"],
+            &["icm", "--stacks", "0,0,0", "--payouts", "50,30,20"],
+            &["icm", "--stacks", "-5,3", "--payouts", "50,30"],
+            &["icm", "--stacks", "100,100", "--payouts", "NaN,inf"],
+            &["analyse", "/nulle/part/historique.txt"],
+        ] {
+            match outcome(bad) {
+                Ok(Err(_)) => {}
+                Ok(Ok(())) => panic!("{bad:?} accepté"),
+                Err(msg) => panic!("{bad:?} : panique « {msg} »"),
+            }
+        }
+    }
 }
