@@ -634,3 +634,28 @@ erreur, jamais une panique. Ils ont trouvé deux défauts :
 **Pistes suivantes.** `capture` (873 lignes, 3 tests) et `shared` (4 tests) sont les crates
 livrés les moins testés ; en attente de la décision de l'utilisateur sur la réorientation de
 la routine.
+
+## 2026-11-14 — Itération 22 : capture d'écran, tampon trop court refusé au lieu de paniquer
+
+**CI.** Celle de l'itération 21 est verte et fusionnée.
+
+**Constat.** `shared` (284 lignes) est petit et ses points sensibles sont couverts. Dans
+`capture`, `bgrx_to_rgba` découpait le tampon source sans vérifier sa longueur ; le moteur
+X11 déduit le pas des lignes de la taille de la réponse du serveur
+(`data.len() / hauteur`) : une réponse incomplète (serveur X, XWayland, fenêtre
+redimensionnée pendant la capture) faisait paniquer la capture au lieu de renvoyer une
+erreur.
+
+**Changement** (`capture/src/lib.rs`, `x11.rs`, `windows.rs`) : `bgrx_to_rgba` renvoie
+`Result` et répond `CaptureError::PixelFormat` (« tampon de N octets trop court pour W × H
+pixels ») si le pas est plus court qu'une ligne ou le tampon trop court (calcul vérifié
+contre le débordement) ; la dernière ligne peut rester sans remplissage. Les deux moteurs
+propagent l'erreur (`?`), le moteur Windows lit aussi son décalage avec `get`. Test
+`short_buffers_are_errors`.
+
+Le moteur Windows ne se compile pas sous Linux : vérifié avec `cargo clippy --target
+x86_64-pc-windows-gnu`, et macOS avec `--target aarch64-apple-darwin` (toolchains ajoutées
+localement), en plus de Linux.
+
+**Pistes suivantes.** En attente de la décision de l'utilisateur sur la réorientation de la
+routine (fonctionnalités dans les crates squelettes, ou fréquence réduite).

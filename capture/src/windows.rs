@@ -227,7 +227,12 @@ impl ScreenCapturer for GdiCapturer {
         let bgra = surface.read()?;
         let stride = full_w as usize * 4;
         let offset = r.y as usize * stride + r.x as usize * 4;
-        let rgba = bgrx_to_rgba(&bgra[offset..], r.width, r.height, stride);
+        let rgba = bgrx_to_rgba(
+            bgra.get(offset..).unwrap_or_default(),
+            r.width,
+            r.height,
+            stride,
+        )?;
         Ok(CapturedFrame {
             width: r.width,
             height: r.height,
