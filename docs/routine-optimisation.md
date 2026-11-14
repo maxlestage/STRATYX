@@ -538,3 +538,30 @@ complètes, compilation sans avertissement.
 
 - Temps de démarrage de `/app` : analyse des deux modèles JSON au premier calcul
   (`serde_json` en WebAssembly) — à mesurer.
+
+## 2026-11-14 — Itération 18 : mesures, aucune piste rentable (pas de changement de code)
+
+**CI.** Celle de l'itération 17 est verte et fusionnée (run complet : ~4 min).
+
+Mesures (release natif, 1 fil), pour ne pas les refaire :
+
+| Piste                                             | Mesure                           | Décision |
+| ------------------------------------------------- | -------------------------------- | -------- |
+| Lecture des modèles JSON des IA au premier calcul | 0,16–0,30 ms par modèle          | négligeable, statu quo |
+| Analyse d'une main (`/app`, 900 tirages)          | 0,21 ms (PokerStars), 0,76 ms (Winamax) | déjà rapide, statu quo |
+| Test `invalid_parameters_are_rejected` (2,7 s seul) | coût de la table de test `small_table()`, calculée une fois (`OnceLock`) et partagée par toute la suite | fausse alerte |
+| `ThreeWayEquities::compute` (≈ 2,7 s en test, ≈ 11 s hors ligne) | utilisé seulement par la table de test et l'exemple `pushfold_charts` (génération hors ligne) ; ~3 s sur ~4 min de CI | pas rentable |
+
+**Bilan.** Les chemins chauds côté utilisateur (équité, évaluateur, Monte-Carlo,
+entraînement, analyse, vision, réponses du site) ont été optimisés aux itérations 1 à 6,
+9 et 14 ; la robustesse de `/app` est couverte (itérations 7 à 13). Les gains restants sont
+marginaux : les prochaines itérations gagneraient à viser des fonctionnalités ou de la
+dette repérée plutôt que la micro-performance.
+
+**Pistes suivantes** (hors performance) :
+
+- Crates encore squelettes (`apps/desktop`, `apps/server`, `apps/mobile`, `coaching`,
+  `transcription`, `video`, `ai/inference`) : voir avec le cahier des charges lesquels
+  méritent une première brique testée.
+- Documentation : le README (section « État ») ne mentionne ni la base PostgreSQL du site,
+  ni la compression, ni les tests de robustesse.
