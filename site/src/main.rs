@@ -600,17 +600,37 @@ fn maintenant() -> i64 {
         .unwrap_or(0)
 }
 
+/// Vrai si `email` a la forme `local@domaine` d'une adresse courante : un seul `@`, une
+/// partie locale en lettres, chiffres et `.!#$%&'*+/=?^_`{|}~-` (sans point au bord ni
+/// doublé), un domaine d'au moins deux étiquettes en lettres, chiffres et tirets. Tout le
+/// reste est refusé — séparateurs de liste (`,` `;`), chevrons, guillemets, caractères de
+/// contrôle : l'adresse est gardée pour écrire un jour à son propriétaire, et à lui seul.
 fn email_valide(email: &str) -> bool {
     let email = email.trim();
-    let Some((avant, apres)) = email.split_once('@') else {
+    let Some((local, domaine)) = email.split_once('@') else {
         return false;
     };
-    !avant.is_empty()
-        && apres.contains('.')
-        && !apres.starts_with('.')
-        && !apres.ends_with('.')
-        && email.len() <= 254
-        && !email.contains(char::is_whitespace)
+    let local_ok = !local.is_empty()
+        && local.len() <= 64
+        && !local.starts_with('.')
+        && !local.ends_with('.')
+        && !local.contains("..")
+        && local
+            .chars()
+            .all(|c| c.is_alphanumeric() || ".!#$%&'*+/=?^_`{|}~-".contains(c));
+    let etiquettes: Vec<&str> = domaine.split('.').collect();
+    let domaine_ok = etiquettes.len() >= 2
+        && etiquettes.iter().all(|e| {
+            !e.is_empty()
+                && e.len() <= 63
+                && !e.starts_with('-')
+                && !e.ends_with('-')
+                && e.chars().all(|c| c.is_alphanumeric() || c == '-')
+        })
+        && etiquettes
+            .last()
+            .is_some_and(|e| e.chars().count() >= 2 && !e.chars().all(|c| c.is_ascii_digit()));
+    local_ok && domaine_ok && email.len() <= 254
 }
 
 fn borne(texte: &str, max: usize) -> String {
@@ -2774,9 +2794,49 @@ mod tests {
 
     #[test]
     fn emails() {
-        assert!(email_valide("camille@exemple.fr"));
-        assert!(!email_valide("camille"));
-        assert!(!email_valide("camille@exemple"));
-        assert!(!email_valide("a b@exemple.fr"));
+        for bonne in [
+            "camille@exemple.fr",
+            "  camille@exemple.fr \n",
+            "Camille.Martin+poker@mail.exemple.co.uk",
+            "o'brien@exemple.ie",
+            "a_b-c@sous-domaine.exemple.fr",
+            "zoé@exemple.fr",
+            "camille@école.fr",
+            "x@exemple.io",
+        ] {
+            assert!(email_valide(bonne), "{bonne}");
+        }
+        for mauvaise in [
+            "",
+            "camille",
+            "camille@exemple",
+            "@exemple.fr",
+            "a b@exemple.fr",
+            // Acceptées avant l'itération 36 :
+            "a@b@exemple.fr",
+            "a@exemple.fr,victime@ailleurs.fr",
+            "a@exemple.fr;victime@ailleurs.fr",
+            "<script>@exemple.fr",
+            "\"a\"@exemple.fr",
+            "a@exemple..fr",
+            "a..b@exemple.fr",
+            ".a@exemple.fr",
+            "a.@exemple.fr",
+            "a@-exemple.fr",
+            "a@exemple-.fr",
+            "a@exemple.f",
+            "a@192.168.1.1",
+            "a\u{0}@exemple.fr",
+            "a@exem\u{7f}ple.fr",
+            "a@exemple.fr\u{200b}x",
+            "a@exemple.fr/chemin",
+            "mailto:a@exemple.fr",
+        ] {
+            assert!(!email_valide(mauvaise), "{mauvaise:?}");
+        }
+        let longue = format!("{}@exemple.fr", "a".repeat(65));
+        assert!(!email_valide(&longue));
+        let longue = format!("a@{}.fr", "b".repeat(64));
+        assert!(!email_valide(&longue));
     }
 }
