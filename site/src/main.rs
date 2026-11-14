@@ -19,24 +19,134 @@ use icones::icone;
 // Données
 // ————————————————————————————————————————————————————————————————————————————
 
-/// Une inscription à la liste d'attente.
-#[model]
-struct Inscrit {
-    id: i64,
-    email: String,
-    profil: String,
-    inscrit_le: i64,
-}
+/// La base du site : la liste d'attente (`inscrit`) et les messages de contact (`message`),
+/// dans Nuage DB (la base de Memoire, en Rust pur) embarqué dans le serveur.
+///
+/// Heroku efface le disque à chaque redémarrage : avec `NUAGE_BACKUP_S3_*`, Nuage envoie ses
+/// sauvegardes (chiffrées par `NUAGE_ENCRYPTION_KEY`) vers un stockage compatible S3 et se
+/// restaure au démarrage quand son dossier est vide. Sans elles, la base vit dans le dossier
+/// `NUAGE_DATA_DIR` (`nuage-data` par défaut) et ne survit qu'à un disque persistant. Voir
+/// site/README.md, « Base de données ».
+///
+/// Nuage est utilisé par son interface SQL, aux valeurs toujours passées en paramètres : il
+/// a sa propre version de Memoire, distincte de celle de Paquets.
+mod base {
+    use std::sync::OnceLock;
 
-/// Un message envoyé depuis la page de contact.
-#[model]
-struct Message {
-    id: i64,
-    nom: String,
-    email: String,
-    sujet: String,
-    contenu: String,
-    recu_le: i64,
+    use nuage::Embedded;
+    use paquets::serde_json::json;
+
+    const SCHEMA: &str = "\
+        CREATE TABLE IF NOT EXISTS inscrit (\
+            id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE, \
+            profil TEXT NOT NULL, inscrit_le BIGINT NOT NULL); \
+        CREATE TABLE IF NOT EXISTS message (\
+            id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT NOT NULL, email TEXT NOT NULL, \
+            sujet TEXT NOT NULL, contenu TEXT NOT NULL, recu_le BIGINT NOT NULL)";
+
+    static BASE: OnceLock<Result<Embedded, String>> = OnceLock::new();
+
+    /// Le dossier de la base : `NUAGE_DATA_DIR`, sinon `nuage-data` (un dossier temporaire
+    /// propre au processus pendant les tests).
+    fn dossier() -> std::path::PathBuf {
+        if let Some(d) = std::env::var_os("NUAGE_DATA_DIR").filter(|d| !d.is_empty()) {
+            return d.into();
+        }
+        if cfg!(test) {
+            return std::env::temp_dir().join(format!("stratyx-site-tests-{}", std::process::id()));
+        }
+        "nuage-data".into()
+    }
+
+    fn ouvrir() -> Result<Embedded, String> {
+        let config =
+            nuage::config::from_vars(|k| std::env::var(k).ok()).map_err(|e| e.to_string())?;
+        let sauvegardes = config.engine.backup.as_ref().map(|b| b.store.describe());
+        let dir = dossier();
+        let base = Embedded::open_with(&dir, config.engine).map_err(|e| e.to_string())?;
+        base.sql(SCHEMA, &[]).map_err(|e| e.to_string())?;
+        if let Some(vers) = sauvegardes {
+            eprintln!(
+                "♠ base Nuage DB : {} (sauvegardes vers {vers}, restaurées au démarrage)",
+                dir.display()
+            );
+        } else if !cfg!(test) {
+            eprintln!(
+                "♠ base Nuage DB : {} sans sauvegarde (NUAGE_BACKUP_S3_* absent) : sur Heroku, les données seront perdues au prochain redémarrage",
+                dir.display()
+            );
+        }
+        Ok(base)
+    }
+
+    /// La base, ouverte au premier usage.
+    pub fn get() -> Result<&'static Embedded, String> {
+        BASE.get_or_init(ouvrir).as_ref().map_err(Clone::clone)
+    }
+
+    /// Une inscription à la liste d'attente ; une adresse déjà inscrite est ignorée.
+    pub fn inscrire(email: &str, profil: &str, le: i64) -> Result<(), String> {
+        get()?
+            .sql(
+                "INSERT INTO inscrit (email, profil, inscrit_le) VALUES (?, ?, ?) ON CONFLICT (email) DO NOTHING",
+                &[json!(email), json!(profil), json!(le)],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Un message de la page de contact.
+    pub fn enregistrer_message(
+        nom: &str,
+        email: &str,
+        sujet: &str,
+        contenu: &str,
+        le: i64,
+    ) -> Result<(), String> {
+        get()?
+            .sql(
+                "INSERT INTO message (nom, email, sujet, contenu, recu_le) VALUES (?, ?, ?, ?, ?)",
+                &[
+                    json!(nom),
+                    json!(email),
+                    json!(sujet),
+                    json!(contenu),
+                    json!(le),
+                ],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Nombre de lignes d'une table (`inscrit` ou `message`), pour les tests et le suivi.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn compter(table: &str) -> Result<i64, String> {
+        let sql = match table {
+            "inscrit" => "SELECT count(*) FROM inscrit",
+            "message" => "SELECT count(*) FROM message",
+            _ => return Err(format!("table inconnue : {table}")),
+        };
+        let res = get()?.sql(sql, &[]).map_err(|e| e.to_string())?;
+        Ok(res
+            .first()
+            .and_then(|r| r.rows.first())
+            .and_then(|row| row.first())
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0))
+    }
+
+    /// À l'arrêt (`SIGTERM` d'Heroku) : dernier point de contrôle, dernière sauvegarde, puis
+    /// fermeture, pour ne rien perdre de ce qui a été écrit depuis la dernière sauvegarde.
+    pub fn fermer() {
+        if let Some(Ok(base)) = BASE.get() {
+            let engine = base.engine();
+            let _ = engine.checkpoint();
+            if engine.options().backup.is_some() {
+                let _ = engine.backup_now(false);
+            }
+            let _ = engine.close();
+        }
+    }
 }
 
 #[data]
@@ -1436,13 +1546,17 @@ async fn fair_play(_req: Request) -> Page {
 }
 
 async fn contact(req: Request) -> Page {
-    let erreur = req.query("erreur").is_some();
+    let erreur = req.query("erreur");
     let formulaire = form()
         .class("contact-form card")
         .attr("method", "post")
         .attr("action", "/contact")
         .attr("data-reveal", "up")
-        .child(if erreur {
+        .child(if erreur.as_deref() == Some("2") {
+            p().class("alert").attr("role", "alert").text(
+                "Votre message n'a pas pu être enregistré. Réessayez dans un instant.",
+            )
+        } else if erreur.is_some() {
             p().class("alert").attr("role", "alert").text(
                 "Merci de vérifier votre nom, votre e-mail et votre message (20 caractères minimum).",
             )
@@ -1602,15 +1716,16 @@ async fn envoyer_contact(req: Request) -> Result<Redirect> {
     if f.nom.trim().is_empty() || !email_valide(&f.email) || f.contenu.trim().chars().count() < 20 {
         return Ok(Redirect::see_other("/contact?erreur=1#contenu"));
     }
-    let mut message = Message {
-        id: 0,
-        nom: borne(&f.nom, 200),
-        email: borne(&f.email, 254),
-        sujet: borne(&f.sujet, 60),
-        contenu: borne(&f.contenu, 4000),
-        recu_le: maintenant(),
-    };
-    message.insert(req.db()).await?;
+    if let Err(e) = base::enregistrer_message(
+        &borne(&f.nom, 200),
+        &borne(&f.email, 254),
+        &borne(&f.sujet, 60),
+        &borne(&f.contenu, 4000),
+        maintenant(),
+    ) {
+        eprintln!("contact : message non enregistré ({e})");
+        return Ok(Redirect::see_other("/contact?erreur=2#contenu"));
+    }
     Ok(Redirect::see_other("/merci?type=contact"))
 }
 
@@ -1628,18 +1743,9 @@ async fn inscrire(req: Request) -> Result<Redirect> {
     } else {
         String::new()
     };
-    let deja = Inscrit::query()
-        .filter(Inscrit::EMAIL.eq(email.clone()))
-        .all(req.db())
-        .await?;
-    if deja.is_empty() {
-        let mut inscrit = Inscrit {
-            id: 0,
-            email,
-            profil,
-            inscrit_le: maintenant(),
-        };
-        inscrit.insert(req.db()).await?;
+    if let Err(e) = base::inscrire(&email, &profil, maintenant()) {
+        eprintln!("liste d'attente : inscription non enregistrée ({e})");
+        return Ok(Redirect::see_other("/merci?type=indisponible"));
     }
     Ok(Redirect::see_other("/merci?type=liste"))
 }
@@ -1650,6 +1756,11 @@ async fn merci(req: Request) -> Page {
             "Vous êtes sur la *liste* !",
             "Inscription confirmée. Vous serez prévenu à l'ouverture de chaque étape et invité à l'accès anticipé.",
             true,
+        ),
+        Some("indisponible") => (
+            "Inscription *impossible*",
+            "Votre inscription n'a pas pu être enregistrée. Réessayez dans un instant depuis le pied de page.",
+            false,
         ),
         Some("erreur") => (
             "Adresse *invalide*",
@@ -1872,6 +1983,10 @@ fn app() -> App {
         .render();
 
     let mut app = App::new();
+    // Les données du site sont dans Nuage DB (module `base`) : la base de Paquets reste en
+    // mémoire, sans lire `DATABASE_URL` (une ancienne adresse PostgreSQL l'empêcherait de
+    // démarrer, la fonctionnalité `postgres` n'étant plus compilée).
+    app.database("memory");
     // Brotli (ou gzip) pour le HTML, le CSS, le JavaScript et surtout le WebAssembly des
     // îlots : le routeur d'Heroku ne compresse pas. Les fichiers statiques sont compressés
     // une fois (niveau maximal) puis gardés en cache ; les pages, au niveau rapide.
@@ -1912,8 +2027,6 @@ fn app() -> App {
             )
             .send(pwa::service_worker())
     });
-    app.model::<Inscrit>();
-    app.model::<Message>();
     app.health("/health");
     app.fallback(introuvable);
     app
@@ -1936,7 +2049,16 @@ fn main() -> std::io::Result<()> {
             eprintln!("commande inconnue {autre:?} : lancez sans argument, ou `export <dossier>`");
             std::process::exit(2);
         }
-        None => app().run(),
+        None => {
+            // Ouverte avant la première requête : sur un disque vide, la base est restaurée
+            // depuis ses sauvegardes au démarrage.
+            if let Err(e) = base::get() {
+                eprintln!("♠ base Nuage DB indisponible : {e}");
+            }
+            let resultat = app().run();
+            base::fermer();
+            resultat
+        }
     }
 }
 
@@ -2085,6 +2207,39 @@ mod tests {
                 brut.bytes().len()
             );
         }
+    }
+
+    #[tokio::test]
+    async fn les_formulaires_enregistrent_dans_nuage() {
+        // La liste d'attente et le contact écrivent dans la base Nuage embarquée ; une adresse
+        // déjà inscrite (quelle que soit la casse) n'est pas dupliquée.
+        let client = app().test().await;
+        let avant = (
+            base::compter("inscrit").unwrap(),
+            base::compter("message").unwrap(),
+        );
+        let adresse = format!("test-{}@example.com", std::process::id());
+        for email in [adresse.clone(), adresse.to_uppercase()] {
+            let res = client
+                .post("/liste-attente")
+                .header("sec-fetch-site", "same-origin")
+                .form(&[("email", email.as_str()), ("profil", "")])
+                .await;
+            assert_eq!(res.header("location"), Some("/merci?type=liste"));
+        }
+        let res = client
+            .post("/contact")
+            .header("sec-fetch-site", "same-origin")
+            .form(&[
+                ("nom", "Ada"),
+                ("email", adresse.as_str()),
+                ("sujet", "test"),
+                ("contenu", "Un message assez long pour la validation."),
+            ])
+            .await;
+        assert_eq!(res.header("location"), Some("/merci?type=contact"));
+        assert_eq!(base::compter("inscrit").unwrap(), avant.0 + 1);
+        assert_eq!(base::compter("message").unwrap(), avant.1 + 1);
     }
 
     #[tokio::test]
