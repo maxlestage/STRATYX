@@ -2681,6 +2681,85 @@ mod tests {
         assert_eq!(res.header("location"), Some("/merci?type=contact"));
         assert_eq!(base::compter("inscrit").await.unwrap(), avant.0 + 1);
         assert_eq!(base::compter("message").await.unwrap(), avant.1 + 1);
+
+        // Ce qui est refusé n'écrit rien. Liste d'attente : adresse invalide, champ piège
+        // rempli (le robot reçoit la même réponse qu'un visiteur), requête d'un autre site.
+        let autre = format!("autre-{}@example.com", std::process::id());
+        for (champs, origine, attendu) in [
+            (
+                vec![("email", "pas-une-adresse")],
+                "same-origin",
+                Some("/merci?type=erreur"),
+            ),
+            (
+                vec![("email", "a@example.com,b@example.com")],
+                "same-origin",
+                Some("/merci?type=erreur"),
+            ),
+            (
+                vec![
+                    ("email", autre.as_str()),
+                    ("site_web", "https://robot.example"),
+                ],
+                "same-origin",
+                Some("/merci?type=liste"),
+            ),
+            (vec![("email", autre.as_str())], "cross-site", None),
+        ] {
+            let res = client
+                .post("/liste-attente")
+                .header("sec-fetch-site", origine)
+                .form(&champs)
+                .await;
+            assert_eq!(res.header("location"), attendu, "{champs:?} {origine}");
+            assert!(
+                origine == "same-origin" || res.status().as_u16() >= 400,
+                "{champs:?}"
+            );
+        }
+        // Contact : nom vide, adresse invalide, message trop court, champ piège, autre site.
+        let long = "Un message assez long pour la validation.";
+        let erreur = Some("/contact?erreur=1#contenu");
+        for (nom, email, contenu, piege, origine, attendu) in [
+            ("  ", autre.as_str(), long, "", "same-origin", erreur),
+            ("Ada", "ada@exemple", long, "", "same-origin", erreur),
+            (
+                "Ada",
+                autre.as_str(),
+                "Trop court.",
+                "",
+                "same-origin",
+                erreur,
+            ),
+            (
+                "Ada",
+                autre.as_str(),
+                long,
+                "x",
+                "same-origin",
+                Some("/merci?type=contact"),
+            ),
+            ("Ada", autre.as_str(), long, "", "cross-site", None),
+        ] {
+            let res = client
+                .post("/contact")
+                .header("sec-fetch-site", origine)
+                .form(&[
+                    ("nom", nom),
+                    ("email", email),
+                    ("sujet", "test"),
+                    ("contenu", contenu),
+                    ("site_web", piege),
+                ])
+                .await;
+            assert_eq!(res.header("location"), attendu, "{nom:?} {email} {origine}");
+            assert!(
+                origine == "same-origin" || res.status().as_u16() >= 400,
+                "{nom:?}"
+            );
+        }
+        assert_eq!(base::compter("inscrit").await.unwrap(), avant.0 + 1);
+        assert_eq!(base::compter("message").await.unwrap(), avant.1 + 1);
     }
 
     #[tokio::test]
