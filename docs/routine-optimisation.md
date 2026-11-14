@@ -1181,3 +1181,34 @@ par page vue, service worker ou non).
 (`/style.css?v=…`) et un cache long supprimerait cette requête ; il faut alors que le
 service worker (pré-cache et correspondance des adresses) et l'export statique suivent :
 changement plus large, à mesurer de la même façon.
+
+## 2026-11-14 — Itération 36 : adresses e-mail des formulaires, validation resserrée
+
+**CI.** Celle de l'itération 35 (`1b0c37c`) est verte et fusionnée dans master.
+
+**Trouvé.** `email_valide` (`site/src/main.rs`, formulaires « liste d'attente » et
+« contact ») ne demandait qu'un `@`, un point dans la suite et aucun espace. Elle acceptait
+donc `a@exemple.fr,victime@ailleurs.fr` (deux destinataires pour un futur envoi à la liste),
+`a@b@exemple.fr`, `<script>@exemple.fr`, des caractères de contrôle ou invisibles, des
+domaines impossibles (`a@exemple..fr`, `a@-exemple.fr`, `a@192.168.1.1`). Ces valeurs
+étaient enregistrées telles quelles dans la base (toujours en paramètres SQL : pas
+d'injection, mais des adresses inutilisables ou dangereuses à réutiliser).
+
+**Fait.** Un seul `@` ; partie locale (64 octets au plus) en lettres, chiffres et
+`.!#$%&'*+/=?^_{|}~-` et accent grave, sans point au bord ni doublé ; domaine d'au moins
+deux étiquettes (63 octets au plus) en lettres, chiffres et tirets, sans tiret au bord,
+dernière étiquette d'au moins deux caractères et pas toute en chiffres. Les lettres
+accentuées restent admises (`zoé@exemple.fr`, `camille@école.fr`). Les réponses des
+formulaires ne changent pas (mêmes pages d'erreur).
+
+**Mesuré.** Table du test `emails` : 20 adresses invalides, toutes acceptées par l'ancienne
+règle (20 sur 20, recalculé à part), toutes refusées par la nouvelle ; 8 adresses valides
+(sous-domaines, `+`, apostrophe, accents, espaces autour) acceptées avant comme après.
+
+**Vérifié.** Test `emails` étendu (33 cas : 8 valides, 5 déjà refusées avant, 20 nouvellement
+refusées). Toutes les
+commandes de la CI, workspace et site.
+
+**Pistes suivantes.** Les adresses déjà enregistrées avec l'ancienne règle ne sont pas
+revues (la base de production n'est pas lue par la routine). `style.css` revalidé à chaque
+page (itération 35).
