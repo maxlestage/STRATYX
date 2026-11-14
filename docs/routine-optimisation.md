@@ -1151,3 +1151,33 @@ les commandes de la CI, workspace et site.
 **Pistes suivantes.** Fichiers statiques servis avec `cache-control: max-age=0` (une
 revalidation par fichier à chaque visite sans service worker) : une durée plus longue pour
 les polices et les icônes, qui ne changent pas, est à étudier (réglage de Paquets ?).
+
+## 2026-11-14 — Itération 35 : cache long des polices, mesuré puis écarté (pas de changement de code)
+
+**CI.** Celle de l'itération 34 (`4fb82cf`) est verte, fusionnée et déployée : en production,
+`/fonts/inter-latin.woff2` répond en `font/woff2` (48 256 octets) et la page d'accueil ne
+nomme plus `googleapis`.
+
+**Essayé.** La piste de l'itération 34 : servir les polices avec `cache-control: public,
+max-age=2592000` (30 jours) au lieu du `max-age=0` des fichiers statiques, par un middleware
+du site (réponses 200 et 304), pour supprimer leur revalidation à chaque visite.
+
+**Mesuré** (Chromium, profil gardé entre les visites, requêtes comptées dans le journal du
+serveur, avant et après le changement) :
+
+| Requêtes reçues par le serveur | Polices avant | Polices après | `style.css` |
+|---|---:|---:|---:|
+| 3 visites de l'accueil, sans service worker | 2 (200), 0 revalidation | identique | 1 (200) + 2 (304) |
+| 3 visites de 2 pages, service worker actif | 2 (200), 0 revalidation | identique | 1 (200) + 5 (304) |
+
+Chromium ne revalide déjà pas les polices d'une visite à l'autre, même avec `max-age=0` :
+le changement n'y gagne aucune requête. **Écarté** (annulé, rien de poussé côté code) : un
+middleware de plus sans gain mesurable. Non mesuré : Firefox et Safari, absents d'ici.
+
+**Constat utile.** Ce qui est revalidé à chaque page, c'est `style.css` (une requête 304
+par page vue, service worker ou non).
+
+**Pistes suivantes.** Donner à `style.css` une adresse qui porte son empreinte
+(`/style.css?v=…`) et un cache long supprimerait cette requête ; il faut alors que le
+service worker (pré-cache et correspondance des adresses) et l'export statique suivent :
+changement plus large, à mesurer de la même façon.
