@@ -123,14 +123,15 @@ impl Database {
     /// Ouvre la base du dossier indiqué, la crée si besoin et applique les migrations de
     /// schéma manquantes.
     ///
-    /// Si `path` est un **fichier**, c'est une ancienne base redb (versions précédentes de
-    /// Stratyx) : elle est renommée `<nom>.ancienne-redb`, son contenu est importé dans une
-    /// base Nuage créée à sa place, puis elle est gardée telle quelle en secours. En cas
-    /// d'échec, rien n'est changé (fonctionnalité `import-redb`, active par défaut).
+    /// La base est un **dossier** Nuage DB : un fichier à cet endroit est refusé, laissé tel
+    /// quel.
     pub fn open(path: impl AsRef<Path>) -> Result<Database> {
         let path = path.as_ref();
         if path.is_file() {
-            return crate::legacy::open_and_import(path);
+            return Err(DatabaseError::Storage(format!(
+                "{} est un fichier : la base locale est un dossier Nuage DB",
+                path.display()
+            )));
         }
         Database::open_dir(path, EngineOptions::default())
     }

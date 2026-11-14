@@ -5,8 +5,7 @@ use thiserror::Error;
 /// Erreur renvoyée par [`Database`](crate::Database).
 #[derive(Debug, Error)]
 pub enum DatabaseError {
-    /// Erreur du moteur de stockage Nuage DB (dossier, transaction, requête), ou de la
-    /// lecture d'une ancienne base redb à importer.
+    /// Erreur du moteur de stockage Nuage DB (dossier, transaction, requête).
     #[error("stockage : {0}")]
     Storage(String),
     /// Donnée impossible à sérialiser ou à relire.

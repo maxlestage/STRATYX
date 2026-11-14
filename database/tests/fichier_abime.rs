@@ -2,16 +2,12 @@
 //! fichier remplacé) : l'ouverture et la lecture devraient répondre par une erreur ou par des
 //! données lisibles, jamais par une panique qui ferait planter l'application.
 //!
-//! La base est un dossier Nuage DB ; chacun de ses fichiers est abîmé tour à tour. Une
-//! ancienne base redb abîmée, ouverte pour être importée, passe par le même chemin
-//! (`Database::open` d'un fichier).
+//! La base est un dossier Nuage DB ; chacun de ses fichiers est abîmé tour à tour. Un fichier
+//! mis à la place du dossier est refusé de la même façon, sans panique.
 //!
-//! Jusqu'à Nuage DB 0.4, les pages de la base étaient un fichier redb, et redb 4.x paniquait
-//! sur certains fichiers dont un seul octet était abîmé (index hors limites dans son allocateur
-//! de pages) : ce test était ignoré. Nuage écrit maintenant ses propres pages, avec une somme
-//! de contrôle sur chaque nœud : un fichier abîmé donne une erreur, et le test tourne à chaque
-//! fois. Parade côté application dans tous les cas : les sauvegardes chiffrées vérifiées
-//! (`stratyx_security::backup`).
+//! Les pages de la base sont écrites par Nuage DB lui-même, avec une somme de contrôle sur
+//! chaque nœud : un fichier abîmé donne une erreur. Parade côté application dans tous les
+//! cas : les sauvegardes chiffrées vérifiées (`stratyx_security::backup`).
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
@@ -140,11 +136,13 @@ fn damaged_database_files_never_panic() {
             check(format!("bloc {at}..{end} à zéro"), name, &bytes);
         }
     }
-    // Une ancienne base redb remplacée par n'importe quoi : refusée, sans panique.
-    let legacy = dir.0.join("ancienne.redb");
-    std::fs::write(&legacy, CASH.as_bytes()).unwrap();
-    if let Err(msg) = survives(&legacy, &ids) {
-        failures.push(format!("ancienne base illisible : {msg}"));
+    // Un fichier à la place du dossier de la base : refusé, sans panique, et laissé tel quel.
+    let file = dir.0.join("un-fichier");
+    std::fs::write(&file, CASH.as_bytes()).unwrap();
+    if let Err(msg) = survives(&file, &ids) {
+        failures.push(format!("fichier à la place du dossier : {msg}"));
     }
+    assert!(Database::open(&file).is_err());
+    assert_eq!(std::fs::read(&file).unwrap(), CASH.as_bytes());
     assert!(failures.is_empty(), "{failures:#?}");
 }
