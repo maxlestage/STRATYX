@@ -1481,17 +1481,23 @@ name = "stratyx-site"
 version = "0.1.0"
 dependencies = [
  "getrandom 0.3.4",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "js-sys",
  "nuage",
  "paquets",
+ "rustls",
  "stratyx-analytics",
  "stratyx-poker",
  "stratyx-shared",
  "stratyx-strategy",
  "stratyx-vision",
  "tokio",
+ "tokio-rustls",
  "wasm-bindgen",
  "web-sys",
+ "webpki-roots",
 ]
 
 [[package]]

@@ -969,3 +969,29 @@ WebAssembly), tests, exemples des clients contre un serveur local (tous sauf C, 
 d'en-têtes libcurl ici ; la CI de Nuage les installe). STRATYX : lint et tests du workspace,
 base sans `import-redb`, `cargo deny check` ; site : formatage, lint natif et WebAssembly,
 tests.
+
+## 2026-11-14 — Demande de l'utilisateur : STRATYX dans la console du serveur Nuage DB
+
+La console du serveur Nuage DB (`nuage-f48a8945f31c.herokuapp.com`) liste ses applications
+(`nuage`, `seriously`) : STRATYX n'y figurait pas, car le site gardait sa base **embarquée**
+dans son propre dyno (perdue à chaque redémarrage, faute de seau S3).
+
+**Fait (site).** Avec `NUAGE_URL` et `NUAGE_TOKEN`, la base du site est une application du
+serveur Nuage DB, interrogée en SQL sur HTTPS (`POST /v1/sql`, jeton `Bearer`, valeurs en
+paramètres) ; les tables sont créées à la première requête. Sans ces variables, la base
+reste embarquée (tests, développement). Client HTTPS : hyper + rustls + webpki-roots, les
+crates déjà présentes pour les sauvegardes S3 de Nuage (aucune de plus dans `Cargo.lock`),
+délai de 10 s. `site/README.md`, « Base de données », décrit les deux modes.
+
+**Vérifié.** Trois tests du client contre un faux serveur (requête, jeton, corps JSON,
+lecture des lignes ; erreur 401 rapportée ; adresses invalides refusées). De bout en bout,
+avec un vrai serveur Nuage DB local (master `997927b`) : inscription, inscription en double
+ignorée et message de contact écrits dans l'application du serveur, relus par `/v1/sql` ;
+mauvais jeton → page « indisponible » et cause dans le journal ; aucun dossier embarqué créé.
+HTTPS vers le vrai serveur : non vérifiable d'ici (la passerelle de sortie du bac à sable
+re-signe les certificats) ; le certificat du serveur (Amazon RSA 2048 M01) est couvert par
+webpki-roots, comme pour les sauvegardes S3 de Nuage.
+
+**Reste (utilisateur).** Créer l'application `stratyx` dans la console du serveur et mettre
+son jeton dans `NUAGE_TOKEN` de l'app Heroku `stratyx` (lecture des secrets du serveur
+refusée à l'assistant : la création passe par la console).
