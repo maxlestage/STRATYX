@@ -191,6 +191,37 @@ fn file_database_persists_and_migrates() {
     assert_eq!(db.count_hands(None).unwrap(), 1);
 }
 
+/// Une base tout juste fermée peut tenir son dossier encore un instant (fil d'entretien de
+/// Nuage) : l'ouverture attend qu'il soit rendu, au lieu d'échouer par intermittence.
+#[test]
+fn reopening_waits_for_a_database_being_closed() {
+    let file = TempFile::new("reopen");
+    let held = Database::open(&file.0).unwrap();
+    held.put_hand(&expresso("e1", 500, true, 1_000)).unwrap();
+    let closing = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        drop(held);
+    });
+    let start = std::time::Instant::now();
+    let db = Database::open(&file.0).unwrap();
+    assert!(start.elapsed() >= std::time::Duration::from_millis(250));
+    assert_eq!(db.count_hands(None).unwrap(), 1);
+    closing.join().unwrap();
+}
+
+/// Une base qui reste ouverte ailleurs est toujours refusée, avec la cause.
+#[test]
+fn a_database_held_elsewhere_is_refused() {
+    let file = TempFile::new("held");
+    let held = Database::open(&file.0).unwrap();
+    let start = std::time::Instant::now();
+    let error = Database::open(&file.0).unwrap_err().to_string();
+    assert!(error.contains("already open"), "{error}");
+    assert!(start.elapsed() < std::time::Duration::from_secs(10));
+    held.put_hand(&expresso("e1", 500, true, 1_000)).unwrap();
+    assert_eq!(held.count_hands(None).unwrap(), 1);
+}
+
 #[test]
 fn hands_are_stored_in_the_space_of_their_format() {
     let db = Database::in_memory().unwrap();

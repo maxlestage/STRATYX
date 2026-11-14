@@ -1051,3 +1051,33 @@ commandes de la CI, workspace et site.
 
 **Pistes suivantes.** Adresses IPv6 entre crochets (`http://[::1]:8080`) non gérées par le
 découpage hôte/port de `NUAGE_URL`.
+
+## 2026-11-14 — Itération 32 : CI rouge (réouverture de la base), corrigée
+
+**CI.** Celle de l'itération 31 (`09453ac`) était **rouge**, donc non fusionnée : sous Linux,
+`file_database_persists_and_migrates` (`database/tests/store.rs`) a échoué à rouvrir la
+base qu'il venait de fermer (« already open. Cannot acquire lock ») ; macOS et Windows
+verts. Sans lien avec le changement de l'itération 31 (site seul).
+
+**Cause.** Une base fermée ne rend pas toujours son dossier à l'instant : le fil d'entretien
+de Nuage (un passage toutes les 200 ms) tient le moteur le temps de son passage, et le verrou
+du fichier n'est levé qu'ensuite. Rouvrir la base dans cette fenêtre échoue. Les tests de
+Nuage contournent eux-mêmes ce cas (`open_when_free`). Le défaut est intermittent : 0 échec
+sur 500 exécutions ici, 1 sur la CI. Entre-temps master est passé au magasin de pages
+propre à Nuage (`7ce16d2`) : la fenêtre y existe toujours (même fil d'entretien).
+
+**Fait.** Branche rebasée sur master (l'itération 31 y est rejouée telle quelle).
+`Database::open` attend jusqu'à 2 s qu'un dossier « already open » soit rendu
+(`open_when_free`, `database/src/store.rs`), par essais de 10 ms ; toute autre erreur est
+rendue aussitôt, et une base réellement tenue ailleurs reste refusée, après ce délai.
+
+**Mesuré.** Base fermée 300 ms après la demande d'ouverture (cas rendu déterministe) :
+échec immédiat avant, ouverture réussie après (test rouge sans le correctif, vert avec).
+Base tenue pour de bon : toujours refusée, en 2 s au lieu de 0.
+
+**Vérifié.** Deux tests : `reopening_waits_for_a_database_being_closed`,
+`a_database_held_elsewhere_is_refused`. Toutes les commandes de la CI, workspace et site.
+
+**Pistes suivantes.** En amont (Nuage) : que `Engine::close` attende la fin du passage du
+fil d'entretien rendrait l'attente inutile — à décider par l'utilisateur. Adresses IPv6
+entre crochets dans `NUAGE_URL`.
