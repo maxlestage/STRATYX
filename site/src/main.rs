@@ -20,21 +20,23 @@ use icones::icone;
 // ————————————————————————————————————————————————————————————————————————————
 
 /// La base du site : la liste d'attente (`inscrit`) et les messages de contact (`message`),
-/// dans Nuage DB (la base de Memoire, en Rust pur) embarqué dans le serveur.
+/// dans Nuage DB (la base de Memoire, en Rust pur), de deux façons :
 ///
-/// Heroku efface le disque à chaque redémarrage : avec `NUAGE_BACKUP_S3_*`, Nuage envoie ses
-/// sauvegardes (chiffrées par `NUAGE_ENCRYPTION_KEY`) vers un stockage compatible S3 et se
-/// restaure au démarrage quand son dossier est vide. Sans elles, la base vit dans le dossier
-/// `NUAGE_DATA_DIR` (`nuage-data` par défaut) et ne survit qu'à un disque persistant. Voir
+/// - **sur le serveur Nuage DB** quand `NUAGE_URL` et `NUAGE_TOKEN` sont définis : la base est
+///   l'application de ce jeton sur le serveur (chiffrée et sauvegardée par lui), interrogée en
+///   SQL sur HTTPS (`POST /v1/sql`). C'est le cas en production : le disque d'Heroku est
+///   effacé à chaque redémarrage, le serveur garde les données ;
+/// - **embarquée** sinon (tests, développement) : dans le dossier `NUAGE_DATA_DIR`
+///   (`nuage-data` par défaut), avec ses sauvegardes `NUAGE_BACKUP_*` s'il y en a.
+///
+/// Les valeurs passent toujours en paramètres, jamais dans le texte des requêtes. Voir
 /// site/README.md, « Base de données ».
-///
-/// Nuage est utilisé par son interface SQL, aux valeurs toujours passées en paramètres : il
-/// a sa propre version de Memoire, distincte de celle de Paquets.
 mod base {
     use std::sync::OnceLock;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     use nuage::Embedded;
-    use paquets::serde_json::json;
+    use paquets::serde_json::{Value as Json, json};
 
     const SCHEMA: &str = "\
         CREATE TABLE IF NOT EXISTS inscrit (\
@@ -44,10 +46,15 @@ mod base {
             id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT NOT NULL, email TEXT NOT NULL, \
             sujet TEXT NOT NULL, contenu TEXT NOT NULL, recu_le BIGINT NOT NULL)";
 
-    static BASE: OnceLock<Result<Embedded, String>> = OnceLock::new();
+    enum Base {
+        Embarquee(Embedded),
+        Serveur(distant::Serveur),
+    }
 
-    /// Le dossier de la base : `NUAGE_DATA_DIR`, sinon `nuage-data` (un dossier temporaire
-    /// propre au processus pendant les tests).
+    static BASE: OnceLock<Result<Base, String>> = OnceLock::new();
+
+    /// Le dossier de la base embarquée : `NUAGE_DATA_DIR`, sinon `nuage-data` (un dossier
+    /// temporaire propre au processus pendant les tests).
     fn dossier() -> std::path::PathBuf {
         if let Some(d) = std::env::var_os("NUAGE_DATA_DIR").filter(|d| !d.is_empty()) {
             return d.into();
@@ -58,7 +65,24 @@ mod base {
         "nuage-data".into()
     }
 
-    fn ouvrir() -> Result<Embedded, String> {
+    fn variable(nom: &str) -> Option<String> {
+        std::env::var(nom)
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+    }
+
+    fn ouvrir() -> Result<Base, String> {
+        // Les tests gardent leur base embarquée, même si l'environnement nomme un serveur.
+        if !cfg!(test)
+            && let (Some(url), Some(jeton)) = (variable("NUAGE_URL"), variable("NUAGE_TOKEN"))
+        {
+            let serveur = distant::Serveur::new(&url, jeton)?;
+            eprintln!(
+                "♠ base Nuage DB : application du serveur {url} (chiffrée et sauvegardée par lui)"
+            );
+            return Ok(Base::Serveur(serveur));
+        }
         let (_, engine) = nuage::config::engine_from_vars(|k| std::env::var(k).ok())
             .map_err(|e| e.to_string())?;
         let sauvegardes = engine.backup.as_ref().map(|b| b.store.describe());
@@ -72,79 +96,334 @@ mod base {
             );
         } else if !cfg!(test) {
             eprintln!(
-                "♠ base Nuage DB : {} sans sauvegarde (NUAGE_BACKUP_S3_* absent) : sur Heroku, les données seront perdues au prochain redémarrage",
+                "♠ base Nuage DB embarquée : {} sans sauvegarde (ni NUAGE_URL ni NUAGE_BACKUP_*) : sur Heroku, les données seront perdues au prochain redémarrage",
                 dir.display()
             );
         }
-        Ok(base)
+        Ok(Base::Embarquee(base))
     }
 
-    /// La base, ouverte au premier usage.
-    pub fn get() -> Result<&'static Embedded, String> {
-        BASE.get_or_init(ouvrir).as_ref().map_err(Clone::clone)
+    /// Ouvre la base (au démarrage : une base embarquée sur un disque vide est restaurée depuis
+    /// ses sauvegardes). Pour le serveur, rien n'est encore envoyé.
+    pub fn get() -> Result<(), String> {
+        BASE.get_or_init(ouvrir)
+            .as_ref()
+            .map(|_| ())
+            .map_err(Clone::clone)
+    }
+
+    /// Les tables existent sur le serveur (créées à la première requête).
+    static SCHEMA_PRET: AtomicBool = AtomicBool::new(false);
+
+    /// Exécute une instruction ; renvoie la première colonne de la première ligne, s'il y en a.
+    async fn sql(requete: &str, params: Vec<Json>) -> Result<Option<Json>, String> {
+        match BASE.get_or_init(ouvrir).as_ref().map_err(Clone::clone)? {
+            Base::Embarquee(base) => {
+                let res = base.sql(requete, &params).map_err(|e| e.to_string())?;
+                Ok(res
+                    .first()
+                    .and_then(|r| r.rows.first())
+                    .and_then(|row| row.first())
+                    .map(|v| json!(v.as_i64())))
+            }
+            Base::Serveur(serveur) => {
+                if !SCHEMA_PRET.load(Ordering::Relaxed) {
+                    serveur.sql(SCHEMA, Vec::new()).await?;
+                    SCHEMA_PRET.store(true, Ordering::Relaxed);
+                }
+                let reponse = serveur.sql(requete, params).await?;
+                Ok(reponse
+                    .get("rows")
+                    .and_then(|rows| rows.get(0))
+                    .and_then(|row| row.get(0))
+                    .cloned())
+            }
+        }
     }
 
     /// Une inscription à la liste d'attente ; une adresse déjà inscrite est ignorée.
-    pub fn inscrire(email: &str, profil: &str, le: i64) -> Result<(), String> {
-        get()?
-            .sql(
-                "INSERT INTO inscrit (email, profil, inscrit_le) VALUES (?, ?, ?) ON CONFLICT (email) DO NOTHING",
-                &[json!(email), json!(profil), json!(le)],
-            )
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+    pub async fn inscrire(email: &str, profil: &str, le: i64) -> Result<(), String> {
+        sql(
+            "INSERT INTO inscrit (email, profil, inscrit_le) VALUES (?, ?, ?) ON CONFLICT (email) DO NOTHING",
+            vec![json!(email), json!(profil), json!(le)],
+        )
+        .await
+        .map(drop)
     }
 
     /// Un message de la page de contact.
-    pub fn enregistrer_message(
+    pub async fn enregistrer_message(
         nom: &str,
         email: &str,
         sujet: &str,
         contenu: &str,
         le: i64,
     ) -> Result<(), String> {
-        get()?
-            .sql(
-                "INSERT INTO message (nom, email, sujet, contenu, recu_le) VALUES (?, ?, ?, ?, ?)",
-                &[
-                    json!(nom),
-                    json!(email),
-                    json!(sujet),
-                    json!(contenu),
-                    json!(le),
-                ],
-            )
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        sql(
+            "INSERT INTO message (nom, email, sujet, contenu, recu_le) VALUES (?, ?, ?, ?, ?)",
+            vec![
+                json!(nom),
+                json!(email),
+                json!(sujet),
+                json!(contenu),
+                json!(le),
+            ],
+        )
+        .await
+        .map(drop)
     }
 
     /// Nombre de lignes d'une table (`inscrit` ou `message`), pour les tests et le suivi.
     #[cfg_attr(not(test), allow(dead_code))]
-    pub fn compter(table: &str) -> Result<i64, String> {
-        let sql = match table {
+    pub async fn compter(table: &str) -> Result<i64, String> {
+        let requete = match table {
             "inscrit" => "SELECT count(*) FROM inscrit",
             "message" => "SELECT count(*) FROM message",
             _ => return Err(format!("table inconnue : {table}")),
         };
-        let res = get()?.sql(sql, &[]).map_err(|e| e.to_string())?;
-        Ok(res
-            .first()
-            .and_then(|r| r.rows.first())
-            .and_then(|row| row.first())
+        Ok(sql(requete, Vec::new())
+            .await?
             .and_then(|v| v.as_i64())
             .unwrap_or(0))
     }
 
-    /// À l'arrêt (`SIGTERM` d'Heroku) : dernier point de contrôle, dernière sauvegarde, puis
-    /// fermeture, pour ne rien perdre de ce qui a été écrit depuis la dernière sauvegarde.
+    /// À l'arrêt (`SIGTERM` d'Heroku), pour une base embarquée : dernier point de contrôle,
+    /// dernière sauvegarde, puis fermeture. Le serveur garde lui-même ce qu'il a reçu.
     pub fn fermer() {
-        if let Some(Ok(base)) = BASE.get() {
+        if let Some(Ok(Base::Embarquee(base))) = BASE.get() {
             let engine = base.engine();
             let _ = engine.checkpoint();
             if engine.options().backup.is_some() {
                 let _ = engine.backup_now(false);
             }
             let _ = engine.close();
+        }
+    }
+
+    /// Le client du serveur Nuage DB : `POST /v1/sql` sur HTTPS (rustls, racines de
+    /// webpki-roots), une connexion par requête (les formulaires sont rares).
+    mod distant {
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        use http_body_util::{BodyExt, Full};
+        use hyper::body::Bytes;
+        use hyper::client::conn::http1;
+        use hyper_util::rt::TokioIo;
+        use paquets::serde_json::{self, Value as Json, json};
+        use tokio::net::TcpStream;
+
+        /// Délai maximal d'une requête au serveur.
+        const DELAI: Duration = Duration::from_secs(10);
+
+        pub struct Serveur {
+            https: bool,
+            hote: String,
+            port: u16,
+            jeton: String,
+            tls: tokio_rustls::TlsConnector,
+        }
+
+        impl Serveur {
+            pub fn new(url: &str, jeton: String) -> Result<Serveur, String> {
+                let (https, reste) = if let Some(r) = url.strip_prefix("https://") {
+                    (true, r)
+                } else if let Some(r) = url.strip_prefix("http://") {
+                    (false, r)
+                } else {
+                    return Err(format!("NUAGE_URL doit commencer par https:// : {url}"));
+                };
+                let autorite = reste.split('/').next().unwrap_or_default();
+                let (hote, port) = match autorite.rsplit_once(':') {
+                    Some((h, p)) => (
+                        h.to_owned(),
+                        p.parse().map_err(|_| format!("port invalide dans {url}"))?,
+                    ),
+                    None => (autorite.to_owned(), if https { 443 } else { 80 }),
+                };
+                if hote.is_empty() {
+                    return Err(format!("NUAGE_URL sans hôte : {url}"));
+                }
+                let racines = rustls::RootCertStore {
+                    roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+                };
+                let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(
+                    rustls::crypto::ring::default_provider(),
+                ))
+                .with_safe_default_protocol_versions()
+                .map_err(|e| e.to_string())?
+                .with_root_certificates(racines)
+                .with_no_client_auth();
+                config.alpn_protocols = vec![b"http/1.1".to_vec()];
+                Ok(Serveur {
+                    https,
+                    hote,
+                    port,
+                    jeton,
+                    tls: tokio_rustls::TlsConnector::from(Arc::new(config)),
+                })
+            }
+
+            /// Exécute `sql` (paramètres `?`) ; renvoie la réponse du serveur (`rows` en
+            /// tableaux).
+            pub async fn sql(&self, sql: &str, params: Vec<Json>) -> Result<Json, String> {
+                let corps = json!({ "sql": sql, "params": params, "arrays": true }).to_string();
+                match tokio::time::timeout(DELAI, self.envoyer(corps)).await {
+                    Ok(r) => r,
+                    Err(_) => Err(format!("le serveur {} ne répond pas", self.hote)),
+                }
+            }
+
+            async fn envoyer(&self, corps: String) -> Result<Json, String> {
+                let hote = if self.port == if self.https { 443 } else { 80 } {
+                    self.hote.clone()
+                } else {
+                    format!("{}:{}", self.hote, self.port)
+                };
+                let requete = hyper::Request::post("/v1/sql")
+                    .header("host", hote)
+                    .header("authorization", format!("Bearer {}", self.jeton))
+                    .header("content-type", "application/json")
+                    .header("user-agent", "stratyx-site")
+                    .body(Full::new(Bytes::from(corps)))
+                    .map_err(|e| e.to_string())?;
+                let tcp = TcpStream::connect((self.hote.as_str(), self.port))
+                    .await
+                    .map_err(|e| format!("connexion au serveur Nuage DB : {e}"))?;
+                let reponse = if self.https {
+                    let nom = rustls::pki_types::ServerName::try_from(self.hote.clone())
+                        .map_err(|e| e.to_string())?;
+                    let flux = self
+                        .tls
+                        .connect(nom, tcp)
+                        .await
+                        .map_err(|e| format!("TLS : {e}"))?;
+                    let (mut envoi, connexion) = http1::handshake(TokioIo::new(flux))
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    tokio::spawn(connexion);
+                    envoi
+                        .send_request(requete)
+                        .await
+                        .map_err(|e| e.to_string())?
+                } else {
+                    let (mut envoi, connexion) = http1::handshake(TokioIo::new(tcp))
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    tokio::spawn(connexion);
+                    envoi
+                        .send_request(requete)
+                        .await
+                        .map_err(|e| e.to_string())?
+                };
+                let statut = reponse.status().as_u16();
+                let corps = reponse
+                    .into_body()
+                    .collect()
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .to_bytes();
+                let texte = String::from_utf8_lossy(&corps);
+                if statut != 200 {
+                    let message: String = texte.chars().take(300).collect();
+                    return Err(format!("serveur Nuage DB : {statut} {message}"));
+                }
+                serde_json::from_slice(&corps).map_err(|e| format!("réponse illisible : {e}"))
+            }
+        }
+
+        #[cfg(test)]
+        mod tests {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+            use super::*;
+
+            /// Un faux serveur Nuage : lit une requête, la renvoie au test, répond `reponse`.
+            async fn faux_serveur(
+                statut: &str,
+                reponse: &str,
+            ) -> (String, tokio::task::JoinHandle<String>) {
+                let ecoute = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let url = format!("http://{}", ecoute.local_addr().unwrap());
+                let (statut, reponse) = (statut.to_owned(), reponse.to_owned());
+                let tache = tokio::spawn(async move {
+                    let (mut flux, _) = ecoute.accept().await.unwrap();
+                    let mut recu = Vec::new();
+                    let mut morceau = [0u8; 4096];
+                    loop {
+                        let n = flux.read(&mut morceau).await.unwrap();
+                        recu.extend_from_slice(&morceau[..n]);
+                        let texte = String::from_utf8_lossy(&recu);
+                        if let Some((tete, corps)) = texte.split_once("\r\n\r\n") {
+                            let longueur: usize = tete
+                                .lines()
+                                .find_map(|l| l.strip_prefix("content-length: "))
+                                .and_then(|v| v.trim().parse().ok())
+                                .unwrap_or(0);
+                            if corps.len() >= longueur {
+                                break;
+                            }
+                        }
+                        if n == 0 {
+                            break;
+                        }
+                    }
+                    let http = format!(
+                        "HTTP/1.1 {statut}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reponse}",
+                        reponse.len()
+                    );
+                    flux.write_all(http.as_bytes()).await.unwrap();
+                    String::from_utf8_lossy(&recu).into_owned()
+                });
+                (url, tache)
+            }
+
+            #[tokio::test]
+            async fn le_client_envoie_le_sql_et_lit_la_reponse() {
+                let (url, tache) =
+                    faux_serveur("200 OK", r#"{"columns":["count"],"rows":[[7]]}"#).await;
+                let serveur = Serveur::new(&url, "jeton-secret".into()).unwrap();
+                let reponse = serveur
+                    .sql(
+                        "SELECT count(*) FROM inscrit WHERE email = ?",
+                        vec![json!("a@b.fr")],
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(reponse["rows"][0][0], json!(7));
+                let recu = tache.await.unwrap();
+                assert!(recu.starts_with("POST /v1/sql HTTP/1.1"), "{recu}");
+                assert!(
+                    recu.contains("authorization: Bearer jeton-secret"),
+                    "{recu}"
+                );
+                let corps: Json =
+                    serde_json::from_str(recu.split_once("\r\n\r\n").unwrap().1).unwrap();
+                assert_eq!(
+                    corps,
+                    json!({"sql": "SELECT count(*) FROM inscrit WHERE email = ?", "params": ["a@b.fr"], "arrays": true})
+                );
+            }
+
+            #[tokio::test]
+            async fn une_erreur_du_serveur_est_rapportee() {
+                let (url, tache) =
+                    faux_serveur("401 Unauthorized", r#"{"error":"invalid token"}"#).await;
+                let serveur = Serveur::new(&url, "mauvais".into()).unwrap();
+                let erreur = serveur.sql("SELECT 1", Vec::new()).await.unwrap_err();
+                assert!(erreur.contains("401"), "{erreur}");
+                tache.await.unwrap();
+            }
+
+            #[test]
+            fn les_adresses_invalides_sont_refusees() {
+                assert!(Serveur::new("nuage.example.com", "j".into()).is_err());
+                assert!(Serveur::new("https://", "j".into()).is_err());
+                assert!(Serveur::new("https://h:port", "j".into()).is_err());
+                assert!(
+                    Serveur::new("https://nuage-f48a8945f31c.herokuapp.com/", "j".into()).is_ok()
+                );
+            }
         }
     }
 }
@@ -1722,7 +2001,9 @@ async fn envoyer_contact(req: Request) -> Result<Redirect> {
         &borne(&f.sujet, 60),
         &borne(&f.contenu, 4000),
         maintenant(),
-    ) {
+    )
+    .await
+    {
         eprintln!("contact : message non enregistré ({e})");
         return Ok(Redirect::see_other("/contact?erreur=2#contenu"));
     }
@@ -1743,7 +2024,7 @@ async fn inscrire(req: Request) -> Result<Redirect> {
     } else {
         String::new()
     };
-    if let Err(e) = base::inscrire(&email, &profil, maintenant()) {
+    if let Err(e) = base::inscrire(&email, &profil, maintenant()).await {
         eprintln!("liste d'attente : inscription non enregistrée ({e})");
         return Ok(Redirect::see_other("/merci?type=indisponible"));
     }
@@ -2215,8 +2496,8 @@ mod tests {
         // déjà inscrite (quelle que soit la casse) n'est pas dupliquée.
         let client = app().test().await;
         let avant = (
-            base::compter("inscrit").unwrap(),
-            base::compter("message").unwrap(),
+            base::compter("inscrit").await.unwrap(),
+            base::compter("message").await.unwrap(),
         );
         let adresse = format!("test-{}@example.com", std::process::id());
         for email in [adresse.clone(), adresse.to_uppercase()] {
@@ -2238,8 +2519,8 @@ mod tests {
             ])
             .await;
         assert_eq!(res.header("location"), Some("/merci?type=contact"));
-        assert_eq!(base::compter("inscrit").unwrap(), avant.0 + 1);
-        assert_eq!(base::compter("message").unwrap(), avant.1 + 1);
+        assert_eq!(base::compter("inscrit").await.unwrap(), avant.0 + 1);
+        assert_eq!(base::compter("message").await.unwrap(), avant.1 + 1);
     }
 
     #[tokio::test]

@@ -89,7 +89,7 @@ Le site réutilise les crates du produit : `stratyx-poker`, `stratyx-strategy` e
 
 Le site est un crate autonome, exclu du workspace : l'audit `cargo deny` du produit reste
 inchangé. Paquets y est utilisé sans SQLite ni PostgreSQL ; les données du site sont dans
-Nuage DB embarqué (voir « Base de données »).
+Nuage DB : une application du serveur Nuage DB, ou embarqué (voir « Base de données »).
 
 ## Lancer
 
@@ -128,15 +128,26 @@ site est déployé sur Heroku.
 ## Base de données (liste d'attente, messages de contact)
 
 Le serveur garde les inscriptions à la liste d'attente (table `inscrit`) et les messages de
-contact (table `message`) dans **Nuage DB**, la base de Memoire, en Rust pur, **embarquée
-dans le serveur** (module `base` de `src/main.rs`) : pas de serveur de base à part, pas
-d'abonnement.
+contact (table `message`) dans **Nuage DB**, la base de Memoire, en Rust pur (module `base`
+de `src/main.rs`). Deux façons :
 
-Heroku efface le disque à chaque redémarrage (au moins une fois par jour, et à chaque
-déploiement). Nuage DB s'en accommode : il envoie ses sauvegardes (instantanés et journal,
-chiffrés) vers un **stockage compatible S3** et, quand son dossier est vide au démarrage, il
-s'y **restaure tout seul**. À l'arrêt (`SIGTERM`), le serveur fait un dernier point de
-contrôle et une dernière sauvegarde.
+**1. Sur le serveur Nuage DB (production).** Avec `NUAGE_URL` et `NUAGE_TOKEN`, la base est
+une **application du serveur Nuage DB** (son propre dossier, chiffrée et sauvegardée par le
+serveur), interrogée en SQL sur HTTPS (`POST /v1/sql`). Le disque du dyno du site peut être
+effacé sans rien perdre, et la base apparaît dans la console du serveur. Les tables sont
+créées à la première requête.
+
+1. Console du serveur Nuage DB (`/admin`) → **Applications** → nouvelle application
+   `stratyx` → copier le **jeton** affiché (une seule fois).
+2. Heroku → app `stratyx` → *Settings* → *Config Vars* :
+   `NUAGE_URL` = l'adresse du serveur (`https://….herokuapp.com`), `NUAGE_TOKEN` = le jeton.
+
+Le site redémarre et écrit dans le serveur. Si le serveur ne répond pas ou refuse le jeton,
+les formulaires affichent « indisponible » et le journal du site dit pourquoi.
+
+**2. Embarquée (tests, développement, ou sans serveur).** Sans `NUAGE_URL`/`NUAGE_TOKEN`, la
+base est embarquée dans le site, dans `NUAGE_DATA_DIR` (`nuage-data` par défaut). Sur
+Heroku, il lui faut alors des sauvegardes S3, restaurées au démarrage :
 
 | Variable | Rôle |
 |---|---|
@@ -146,10 +157,10 @@ contrôle et une dernière sauvegarde.
 | `NUAGE_DATA_DIR` | dossier de travail de la base (`nuage-data` par défaut) |
 | `NUAGE_BACKUP_DIR` | sauvegarde vers un dossier, au lieu de S3 (disque persistant, essais en local) |
 
-Sans sauvegarde configurée, la base vit seulement dans `nuage-data` : en local, elle
-persiste ; sur Heroku, elle est perdue au redémarrage (le serveur l'écrit au démarrage).
+Sans serveur ni sauvegarde, la base embarquée vit seulement dans `nuage-data` : en local,
+elle persiste ; sur Heroku, elle est perdue au redémarrage (le serveur l'écrit au démarrage).
 
-**Gratuitement, sur Heroku :**
+**Sauvegardes S3 de la base embarquée, gratuitement** (inutile avec le serveur Nuage DB) :
 
 1. Créer un seau sur un stockage compatible S3 qui a une offre gratuite (par exemple
    Backblaze B2, 10 Go gratuits au moment d'écrire ces lignes ; vérifier ses conditions),
@@ -165,11 +176,12 @@ persiste ; sur Heroku, elle est perdue au redémarrage (le serveur l'écrit au d
    valeurs à Heroku (et retire l'ancien `DATABASE_URL`), et le serveur affiche
    `base Nuage DB : … (sauvegardes vers …, restaurées au démarrage)`.
 
-Un seul dyno web : deux dynos seraient deux bases écrivant dans les mêmes sauvegardes.
+Base embarquée : un seul dyno web (deux dynos seraient deux bases écrivant dans les mêmes
+sauvegardes). Avec le serveur Nuage DB, plusieurs dynos partagent la même base.
 
-**Dépendances.** Nuage DB chiffre avec AES et ses sauvegardes S3 passent par rustls avec
-`ring` (C et assembleur) : exception propre au serveur du site, hors de l'audit `cargo deny`
-du produit. Nuage a sa propre version de Memoire, distincte de celle de Paquets : le site
+**Dépendances.** Les sauvegardes S3 de Nuage DB et le client du serveur Nuage DB passent par
+rustls avec `ring` (C et assembleur) : exception propre au serveur du site, hors de l'audit
+`cargo deny` du produit. Nuage a sa propre version de Memoire, distincte de celle de Paquets : le site
 lui parle en SQL (valeurs toujours en paramètres), et la base de Paquets reste en mémoire,
 inutilisée.
 
