@@ -6,12 +6,12 @@
 //! ancienne base redb abîmée, ouverte pour être importée, passe par le même chemin
 //! (`Database::open` d'un fichier).
 //!
-//! **Limite connue (en amont).** redb 4.4 (et 4.6), sur lequel s'appuie aussi le stockage des
-//! pages de Nuage, panique sur certains fichiers dont un seul octet est abîmé (index hors
-//! limites dans l'allocateur de pages, « Malformed allocator state »). Le test est donc
-//! ignoré par défaut : `cargo test -p stratyx-database --test fichier_abime -- --ignored` pour
-//! vérifier une nouvelle version. Parade côté application : les sauvegardes chiffrées
-//! vérifiées (`stratyx_security::backup`).
+//! Jusqu'à Nuage DB 0.4, les pages de la base étaient un fichier redb, et redb 4.x paniquait
+//! sur certains fichiers dont un seul octet était abîmé (index hors limites dans son allocateur
+//! de pages) : ce test était ignoré. Nuage écrit maintenant ses propres pages, avec une somme
+//! de contrôle sur chaque nœud : un fichier abîmé donne une erreur, et le test tourne à chaque
+//! fois. Parade côté application dans tous les cas : les sauvegardes chiffrées vérifiées
+//! (`stratyx_security::backup`).
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
@@ -104,7 +104,6 @@ fn survives(path: &Path, ids: &[String]) -> Result<(), String> {
 }
 
 #[test]
-#[ignore = "redb 4.x panique sur certains fichiers abîmés (défaut en amont, voir l'en-tête)"]
 fn damaged_database_files_never_panic() {
     let dir = TempDir::new("base-abimee");
     let (model, ids) = sample_database(&dir.0);

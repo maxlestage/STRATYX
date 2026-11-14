@@ -609,7 +609,7 @@ dependencies = [
 [[package]]
 name = "nuage"
 version = "0.4.0"
-source = "git+https://github.com/maxlestage/Nuage?rev=997927b#997927bdcfb33c7c0575615d31174edb4592e383"
+source = "git+https://github.com/maxlestage/Nuage?rev=4ac7483#4ac748302bcaaf041fda3966d80adf81d2dc2183"
 dependencies = [
  "aes",
  "aes-gcm",
