@@ -290,6 +290,14 @@ ouverture : le fichier est renommé `<nom>.ancienne-redb` et gardé en secours, 
 est recopié dans une base Nuage créée à sa place, en une transaction ; en cas d'échec, rien
 n'est changé. redb ne sert plus qu'à cette lecture (fonctionnalité `import-redb`, par défaut).
 
+**Pages de Nuage.** Jusqu'à Nuage DB 0.4, Nuage rangeait lui-même ses pages dans un fichier
+redb (`nuage.redb`, dans le dossier de la base). Il écrit maintenant ses propres pages
+(`nuage.db` : arbres B en copie sur écriture, somme de contrôle sur chaque nœud) et n'utilise
+plus redb. Une base locale créée avant est importée par Nuage à sa première ouverture
+(l'ancien fichier est gardé en `nuage.redb.imported`) : `import-redb` active pour cela la
+fonctionnalité du même nom de Nuage. Conséquence mesurable : `tests/fichier_abime.rs`, ignoré
+tant que redb paniquait sur certains fichiers abîmés, passe et tourne à chaque fois.
+
 **Exceptions à `deny.toml` (T2), limitées à ces crates.** Les sources Git
 `github.com/maxlestage/Nuage` et `github.com/maxlestage/Memoire` sont autorisées (épinglées
 par révision dans `Cargo.lock`). Leur licence propriétaire (même titulaire des droits que
