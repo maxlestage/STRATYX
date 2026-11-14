@@ -315,9 +315,12 @@ pub(crate) fn decode_hand(id: &str, bytes: &[u8]) -> Result<StoredHand> {
 }
 
 pub(crate) fn read_hand_in(tx: &Tx<'_>, id: &str) -> Result<Option<StoredHand>> {
-    tx.text("SELECT donnees FROM main WHERE id = ?", &[id.into()])?
-        .map(|json| decode_hand(id, json.as_bytes()))
-        .transpose()
+    tx.text(
+        "SELECT donnees FROM main_donnees WHERE id = ?",
+        &[id.into()],
+    )?
+    .map(|json| decode_hand(id, json.as_bytes()))
+    .transpose()
 }
 
 /// Écrit la ligne d'une main et ses index (la main ne doit pas déjà exister) ; l'empreinte
@@ -325,7 +328,7 @@ pub(crate) fn read_hand_in(tx: &Tx<'_>, id: &str) -> Result<Option<StoredHand>> 
 pub(crate) fn insert_hand_row(tx: &Tx<'_>, stored: &StoredHand, s: &HandSummary) -> Result<()> {
     let id = s.id.as_str();
     let fp = s.fingerprint.to_hex();
-    let params: [Json; 10] = [
+    let mut params: Vec<Json> = vec![
         id.into(),
         s.space.code().into(),
         fp.clone().into(),
@@ -334,28 +337,31 @@ pub(crate) fn insert_hand_row(tx: &Tx<'_>, stored: &StoredHand, s: &HandSummary)
         s.status.validation.kind().key().into(),
         u8::from(s.status.needs_review()).into(),
         s.played_at_ms.into(),
-        to_json(stored)?.into(),
         to_json(s)?.into(),
+        id.into(),
+        to_json(stored)?.into(),
+        fp.into(),
+        id.into(),
     ];
-    tx.exec(
+    // Une seule requête (lue et exécutée d'un coup) : la ligne de recherche, la main complète
+    // (plusieurs Ko, dans sa propre table pour que la recherche ne parcoure que des lignes
+    // courtes), l'empreinte si aucune autre main ne la porte, et les joueurs.
+    let mut sql = String::from(
         "INSERT INTO main (id, espace, empreinte, session, format, validation, a_revoir, \
-         joue_le, donnees, resume) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        &params,
-    )?;
-    for player in &s.players {
-        tx.exec(
-            "INSERT OR IGNORE INTO main_joueur (cle, main, joueur) VALUES (?, ?, ?)",
-            &[
-                format!("{id}\u{1f}{player}").into(),
-                id.into(),
-                player.as_str().into(),
-            ],
-        )?;
+         joue_le, resume) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?); \
+         INSERT INTO main_donnees (id, donnees) VALUES (?, ?); \
+         INSERT OR IGNORE INTO empreinte (empreinte, main) VALUES (?, ?)",
+    );
+    if !s.players.is_empty() {
+        sql.push_str("; INSERT OR IGNORE INTO main_joueur (cle, main, joueur) VALUES ");
+        for (i, player) in s.players.iter().enumerate() {
+            sql.push_str(if i == 0 { "(?, ?, ?)" } else { ", (?, ?, ?)" });
+            params.push(format!("{id}\u{1f}{player}").into());
+            params.push(id.into());
+            params.push(player.as_str().into());
+        }
     }
-    tx.exec(
-        "INSERT OR IGNORE INTO empreinte (empreinte, main) VALUES (?, ?)",
-        &[fp.into(), id.into()],
-    )?;
+    tx.exec(&sql, &params)?;
     Ok(())
 }
 
@@ -432,9 +438,11 @@ pub(crate) fn remove_hand(tx: &Tx<'_>, id: &str) -> Result<Option<HandSummary>> 
     let summary: HandSummary = from_json(json.as_bytes())?;
     tx.exec(
         "DELETE FROM main WHERE id = ?; \
+         DELETE FROM main_donnees WHERE id = ?; \
          DELETE FROM main_joueur WHERE main = ?; \
          DELETE FROM empreinte WHERE empreinte = ? AND main = ?",
         &[
+            id.into(),
             id.into(),
             id.into(),
             summary.fingerprint.to_hex().into(),
