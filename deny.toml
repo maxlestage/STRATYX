@@ -98,7 +98,7 @@ deny = [
     { crate = "aws-lc-sys", reason = "C : fournisseur rustls à remplacer par RustCrypto" },
     { crate = "aws-lc-rs", reason = "C : fournisseur rustls à remplacer par RustCrypto" },
     # Bases de données embarquées en C.
-    { crate = "libsqlite3-sys", reason = "SQLite (C) : base locale en Rust (redb)" },
+    { crate = "libsqlite3-sys", reason = "SQLite (C) : base locale en Rust (Nuage DB)" },
     { crate = "rocksdb", reason = "RocksDB (C++) : écarté" },
     { crate = "librocksdb-sys", reason = "RocksDB (C++) : écarté" },
     # IA : moteurs C++/CUDA/Python.
@@ -139,10 +139,6 @@ allow-build-scripts = [
     "proc-macro2",
     "quote",
     "rayon-core",
-    # redb (base locale, décision T3) : déclare des options cfg (`fuzzing`, `redb_no_std`) et,
-    # uniquement sous `cfg(fuzzing)` sur macOS, des options d'édition de liens ; aucun code
-    # natif compilé (relu le 2026-11-04, redb 4.4.0).
-    "redb",
     "rustix", # capture X11 (via x11rb) : sondage de rustc uniquement
     "serde",
     "serde_core",
@@ -161,12 +157,6 @@ include-archives = true
 [[bans.build.bypass]]
 crate = "zerocopy"
 allow-globs = ["ci/*.sh", "cargo.sh"]
-
-# redb embarque le script de son bac à sable de développement (podman, invoqué par son
-# justfile), jamais exécuté au build. Son build.rs ne fait que déclarer des options cfg.
-[[bans.build.bypass]]
-crate = "redb"
-allow-globs = ["scripts/podman-sandbox.sh"]
 
 [sources]
 unknown-registry = "deny"

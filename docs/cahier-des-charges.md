@@ -186,7 +186,7 @@ de `decisions.md`.
 ### Autres livraisons (branche des phases 2 à 8)
 
 - `capture` : trait `ScreenCapturer`, X11 en Rust pur (testé sous Xvfb), Windows GDI.
-- `database` : base Nuage DB embarquée en cinq espaces (import des anciennes bases redb), empreintes SHA-256, ingestion d'archives avec
+- `database` : base Nuage DB embarquée en cinq espaces, empreintes SHA-256, ingestion d'archives avec
   provenance et licence (D5), sessions et progression, RGPD, import et export PokerStars.
 - `strategy` : matrice d'équité préflop 169 × 169 embarquée, équilibres push/fold par CFR+
   (tête-à-tête en chipEV, 3-max en chipEV ou ICM, exploitabilité mesurée), solveur de river

@@ -161,8 +161,7 @@ Constat d'audit du 2026-11-04 sur la pile candidate du cahier des charges :
 - Serveur : PostgreSQL via SQLx. Le pilote est en Rust pur. PostgreSQL est un service externe,
   pas une bibliothèque liée au binaire.
 - Poste de travail et mobile : **redb**, base embarquée transactionnelle en Rust pur. SQLite est
-  exclu par D1. *Remplacé par Nuage DB embarqué (T14) ; redb ne sert plus qu'à importer une
-  ancienne base.*
+  exclu par D1. *Remplacé par Nuage DB embarqué (T14) : STRATYX n'utilise plus redb.*
 - Les quatre bases logiques (Expresso, Tournois, Stratégie, Utilisateurs) sont des espaces
   séparés. Le format pivot est `HandRecord` (JSON versionné).
 
@@ -285,18 +284,14 @@ moteur embarqué est compilé sans ses fonctionnalités par défaut : Rust pur, 
 toujours en paramètres) ; chaque opération est une transaction (`EmbeddedTransaction::sql`,
 ajouté à Nuage pour cela), les écritures sont sérialisées.
 
-**Anciennes bases.** Une base redb (un fichier) est importée automatiquement à sa première
-ouverture : le fichier est renommé `<nom>.ancienne-redb` et gardé en secours, tout son contenu
-est recopié dans une base Nuage créée à sa place, en une transaction ; en cas d'échec, rien
-n'est changé. redb ne sert plus qu'à cette lecture (fonctionnalité `import-redb`, par défaut).
-
-**Pages de Nuage.** Jusqu'à Nuage DB 0.4, Nuage rangeait lui-même ses pages dans un fichier
-redb (`nuage.redb`, dans le dossier de la base). Il écrit maintenant ses propres pages
-(`nuage.db` : arbres B en copie sur écriture, somme de contrôle sur chaque nœud) et n'utilise
-plus redb. Une base locale créée avant est importée par Nuage à sa première ouverture
-(l'ancien fichier est gardé en `nuage.redb.imported`) : `import-redb` active pour cela la
-fonctionnalité du même nom de Nuage. Conséquence mesurable : `tests/fichier_abime.rs`, ignoré
-tant que redb paniquait sur certains fichiers abîmés, passe et tourne à chaque fois.
+**Plus de redb.** STRATYX n'utilise que Nuage DB, et Nuage DB écrit ses propres pages
+(`nuage.db` : arbres B en copie sur écriture, somme de contrôle sur chaque nœud). La base
+locale est un dossier ; un fichier à sa place est refusé et laissé tel quel. L'import des bases
+redb d'avant Nuage (un fichier) et celui des bases Nuage dont les pages étaient encore un
+fichier redb (`nuage.redb`, Nuage DB jusqu'à 0.4) ont été retirés avec la dépendance : une
+telle base s'ouvre une dernière fois avec une version antérieure de STRATYX pour en exporter
+le contenu (`export_json`, export PokerStars). `tests/fichier_abime.rs`, ignoré tant que redb
+paniquait sur certains fichiers abîmés, passe et tourne à chaque fois.
 
 **Exceptions à `deny.toml` (T2), limitées à ces crates.** Les sources Git
 `github.com/maxlestage/Nuage` et `github.com/maxlestage/Memoire` sont autorisées (épinglées
