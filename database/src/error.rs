@@ -8,6 +8,10 @@ pub enum DatabaseError {
     /// Erreur du moteur de stockage redb (fichier, transaction, table).
     #[error("stockage : {0}")]
     Storage(#[source] Box<redb::Error>),
+    /// Erreur du moteur Nuage DB (stockage en construction, décision T14).
+    #[cfg(feature = "nuage")]
+    #[error("stockage Nuage : {0}")]
+    Nuage(String),
     /// Donnée impossible à sérialiser ou à relire.
     #[error("sérialisation JSON : {0}")]
     Json(#[from] serde_json::Error),
