@@ -17,7 +17,7 @@ thiserror.workspace = true
 sha2 = { version = "0.11", default-features = false }
 # Nuage DB embarqué : la base locale (décision T14). Moteur seul (`default-features = false`) :
 # Rust pur, sans réseau, chiffrement RustCrypto.
-nuage = { git = "https://github.com/maxlestage/Nuage", rev = "997927b", default-features = false }
+nuage = { git = "https://github.com/maxlestage/Nuage", rev = "4ac7483", default-features = false }
 # Les valeurs des lignes SQL de Nuage (même crate que celui de Nuage, aucune dépendance de plus).
 memoire-orm = { git = "https://github.com/maxlestage/Memoire", rev = "074fbde", default-features = false }
 # Ancien stockage (redb, décision T3), lu une seule fois pour importer une ancienne base.
@@ -25,8 +25,10 @@ redb = { version = "4.4", default-features = false, features = ["std"], optional
 
 [features]
 default = ["import-redb"]
-## Import automatique d'une ancienne base redb à son ouverture (fichier unique).
-import-redb = ["dep:redb"]
+## Import automatique d'une ancienne base à son ouverture : une base redb d'avant Nuage DB
+## (fichier unique), et une base Nuage DB dont les pages étaient encore un fichier redb
+## (`nuage.redb`, Nuage DB jusqu'à 0.4), que Nuage importe lui-même dans ses propres pages.
+import-redb = ["dep:redb", "nuage/import-redb"]
 
 [dev-dependencies]
 # Fuzzing déterministe de l'import (tests/import_robustesse.rs).
