@@ -1212,3 +1212,28 @@ commandes de la CI, workspace et site.
 **Pistes suivantes.** Les adresses déjà enregistrées avec l'ancienne règle ne sont pas
 revues (la base de production n'est pas lue par la routine). `style.css` revalidé à chaque
 page (itération 35).
+
+## 2026-11-14 — Itération 37 : formulaires du site, les refus sont testés
+
+**CI.** Celle de l'itération 36 (`3611969`) est verte et fusionnée dans master.
+
+**Constat.** Le seul test des formulaires (`les_formulaires_enregistrent_dans_nuage`)
+n'envoyait que des demandes valides : aucun des refus des deux formulaires (liste d'attente,
+contact) n'était exercé. Retirer un de ces contrôles ne faisait échouer aucun test.
+
+**Fait.** Le test envoie aussi neuf demandes refusées et vérifie pour chacune la réponse et
+qu'aucune ligne n'est écrite en base :
+- liste d'attente : adresse invalide, deux adresses séparées par une virgule (itération 36),
+  champ piège rempli (même réponse qu'à un visiteur, rien d'enregistré), requête venue d'un
+  autre site (`sec-fetch-site: cross-site`, refusée par Paquets) ;
+- contact : nom vide, adresse invalide, message trop court, champ piège, autre site.
+
+Aucun défaut trouvé : le code des formulaires n'est pas modifié.
+
+**Mesuré.** Cinq mutations du code des formulaires (champ piège ignoré dans chacun des deux,
+adresse non vérifiée à l'inscription, longueur minimale du message, nom vide accepté) : 5
+détectées sur 5 par le test étendu ; l'ancien n'envoyait aucune de ces demandes.
+
+**Vérifié.** Toutes les commandes de la CI, workspace et site.
+
+**Pistes suivantes.** `style.css` revalidé à chaque page (itération 35).
