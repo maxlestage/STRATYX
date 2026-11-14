@@ -571,7 +571,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 [[package]]
 name = "memoire-orm"
 version = "0.2.1"
-source = "git+https://github.com/maxlestage/Memoire?rev=66b9c38#66b9c38545f2a2132272642db9d5c7a6702e15fd"
+source = "git+https://github.com/maxlestage/Memoire?rev=a7419cb#a7419cbde36f8e2f26a2073a5fd1fae23298ce48"
 dependencies = [
  "chrono",
  "foldhash",
@@ -588,7 +588,7 @@ dependencies = [
 [[package]]
 name = "memoire-orm-derive"
 version = "0.2.1"
-source = "git+https://github.com/maxlestage/Memoire?rev=66b9c38#66b9c38545f2a2132272642db9d5c7a6702e15fd"
+source = "git+https://github.com/maxlestage/Memoire?rev=a7419cb#a7419cbde36f8e2f26a2073a5fd1fae23298ce48"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -609,7 +609,7 @@ dependencies = [
 [[package]]
 name = "nuage"
 version = "0.4.0"
-source = "git+https://github.com/maxlestage/Nuage?rev=8c57acc#8c57acc0014474d1161f58a09c5ab25852b9ccb8"
+source = "git+https://github.com/maxlestage/Nuage?rev=7ce16d2#7ce16d276f62d36200edf2563545705c477379e2"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -621,7 +621,6 @@ dependencies = [
  "hmac",
  "libc",
  "memoire-orm",
- "redb",
  "serde_json",
  "sha2",
  "uuid",
@@ -910,15 +909,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "redb"
-version = "4.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "096b1dd5ec053c9c2a5a26a93aafeadf73ebcb710ea54dc3151f17a8e20535ef"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1131,7 +1121,6 @@ dependencies = [
  "nuage",
  "rand 0.9.5",
  "rand_chacha",
- "redb",
  "serde",
  "serde_json",
  "sha2",

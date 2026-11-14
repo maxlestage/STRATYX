@@ -5,7 +5,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use stratyx_poker::{GameFormat, Specialist};
 
-/// Base logique. Toutes partagent un même fichier redb ; chacune a ses propres tables,
+/// Base logique. Toutes partagent une même base Nuage DB ; chacune a ses propres tables,
 /// préfixées par [`Space::key`].
 ///
 /// | Espace | Base du cahier des charges | Contenu |
