@@ -509,3 +509,32 @@ Le WebAssembly servi fait donc 1,25 Mo (et non 2,3 Mo, taille du `.wasm` brut av
 
 - Ce qui pèse dans les 1,25 Mo : code (~1 Mo) et données (~430 Ko) ; les modèles des IA
   embarqués dans le WebAssembly (JSON) sont un candidat.
+
+## 2026-11-14 — Itération 17 : poids du bundle (mesures, statu quo) et avertissement de cargo 1.100
+
+**CI.** Celle de l'itération 16 est verte : les itérations 14 à 16 sont fusionnées dans
+`master`.
+
+**Ce qui pèse dans les 1,25 Mo du WebAssembly.**
+
+- Données (~430 Ko) : les deux modèles des IA en JSON (`expresso-3max.json` 125 Ko,
+  `tournois-6max.json` 219 Ko : push/fold encodé en lettres, poids des réseaux en
+  flottants) et la matrice préflop (114 Ko). Le JSON se compresse très bien en Brotli ; un
+  format binaire gagnerait peu sur le réseau, et arrondir les flottants changerait les
+  décisions des IA. Statu quo.
+- Code (~1 Mo) : `opt-level = "z"` au lieu de `"s"` dans `wasm-release` réduit la section de
+  code de 10,6 % (1 030 485 → 920 867 octets ; 294 195 → 271 121 en gzip -9, ~23 Ko de moins
+  à transférer). Mais le même réglage en natif ralentit l'équité de 10 à 16 %
+  (`AhKh QsQd` 35,2 → 38,7 ms ; Monte-Carlo 80 000 tirages 8,6 → 9,7 ms et 24,1 → 27,9 ms,
+  1 fil). Le site étant une PWA dont le service worker garde le bundle en cache, les 23 Ko ne
+  se paient qu'une fois, le ralentissement à chaque calcul : **`"s"` est gardé**.
+
+**Changement.** Cargo 1.100 avertissait à chaque compilation : « unused field
+`workspace.package.repository` ». Les 19 crates du workspace héritent désormais du champ
+(`repository.workspace = true`, comme `version`, `edition` et `publish`) : métadonnées
+complètes, compilation sans avertissement.
+
+**Pistes suivantes.**
+
+- Temps de démarrage de `/app` : analyse des deux modèles JSON au premier calcul
+  (`serde_json` en WebAssembly) — à mesurer.
