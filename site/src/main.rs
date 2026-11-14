@@ -216,6 +216,14 @@ mod base {
         /// Délai maximal d'une requête au serveur.
         const DELAI: Duration = Duration::from_secs(10);
 
+        /// Vrai si `hote` désigne la machine elle-même (`localhost` ou une adresse de bouclage).
+        fn est_locale(hote: &str) -> bool {
+            hote.eq_ignore_ascii_case("localhost")
+                || hote
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+        }
+
         pub struct Serveur {
             https: bool,
             hote: String,
@@ -243,6 +251,13 @@ mod base {
                 };
                 if hote.is_empty() {
                     return Err(format!("NUAGE_URL sans hôte : {url}"));
+                }
+                // Le jeton part dans chaque requête : jamais en clair sur le réseau. `http://`
+                // n'est admis que vers la machine elle-même (serveur local de développement).
+                if !https && !est_locale(&hote) {
+                    return Err(format!(
+                        "NUAGE_URL en http:// refusée (le jeton circulerait en clair) : utiliser https://{autorite}"
+                    ));
                 }
                 let racines = rustls::RootCertStore {
                     roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
@@ -420,6 +435,27 @@ mod base {
                 assert!(Serveur::new("nuage.example.com", "j".into()).is_err());
                 assert!(Serveur::new("https://", "j".into()).is_err());
                 assert!(Serveur::new("https://h:port", "j".into()).is_err());
+            }
+
+            #[test]
+            fn le_jeton_ne_part_jamais_en_clair() {
+                for url in [
+                    "http://nuage-f48a8945f31c.herokuapp.com",
+                    "http://nuage.example.com:8080/",
+                    "http://192.168.1.10:8080",
+                    "http://localhost.example.com",
+                ] {
+                    let erreur = Serveur::new(url, "j".into()).err().expect(url);
+                    assert!(erreur.contains("https://"), "{erreur}");
+                }
+                for url in [
+                    "http://localhost:8080",
+                    "http://LOCALHOST",
+                    "http://127.0.0.1:8080/",
+                    "http://127.8.9.1",
+                ] {
+                    assert!(Serveur::new(url, "j".into()).is_ok(), "{url}");
+                }
                 assert!(
                     Serveur::new("https://nuage-f48a8945f31c.herokuapp.com/", "j".into()).is_ok()
                 );

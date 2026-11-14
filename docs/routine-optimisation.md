@@ -995,3 +995,35 @@ webpki-roots, comme pour les sauvegardes S3 de Nuage.
 **Reste (utilisateur).** Créer l'application `stratyx` dans la console du serveur et mettre
 son jeton dans `NUAGE_TOKEN` de l'app Heroku `stratyx` (lecture des secrets du serveur
 refusée à l'assistant : la création passe par la console).
+
+## 2026-11-14 — Itération 30 : le jeton du serveur Nuage DB ne part jamais en clair
+
+**CI.** Celle du dernier push (`b752d5d`) est verte et fusionnée dans master ; branche
+repartie de master.
+
+**Trouvé.** Le client du serveur Nuage DB (`site/src/main.rs`, `base::distant`) acceptait
+une `NUAGE_URL` en `http://` vers n'importe quel hôte (utile aux tests, contre un faux
+serveur local), alors que son message d'erreur exigeait `https://`. Une adresse mal saisie
+dans les Config Vars d'Heroku aurait envoyé le jeton (`Authorization: Bearer`) en clair à
+chaque inscription, sans aucun signe : Heroku redirige vers HTTPS, mais après avoir reçu
+l'en-tête.
+
+**Fait.** `http://` n'est admis que vers la machine elle-même (`localhost`, adresses de
+bouclage) ; ailleurs, `Serveur::new` refuse l'adresse au démarrage, avec l'adresse `https://`
+à utiliser (le journal du site dit pourquoi, les formulaires affichent « indisponible »).
+`site/README.md`, « Base de données », le précise.
+
+**Mesuré.** Adresses `http://` distantes acceptées : 4 sur 4 avant, 0 sur 4 après (nom de
+domaine, port explicite, adresse privée `192.168.…`, `localhost.example.com`) ; les 4
+adresses locales restent admises (`localhost`, `LOCALHOST`, `127.0.0.1`, `127.8.9.1`).
+La production n'est pas touchée : sa `NUAGE_URL` est déjà en `https` (schéma seul relu
+par l'API d'Heroku, sans lire le jeton).
+
+**Vérifié.** Nouveau test `le_jeton_ne_part_jamais_en_clair` ; les trois tests existants du
+client (faux serveur local en `http://127.0.0.1`) passent toujours. Toutes les commandes de
+la CI : workspace (formatage, lint, tests, base sans `import-redb`, `cargo deny check`) et
+site (formatage, lint natif et WebAssembly, tests).
+
+**Pistes suivantes.** Borner la taille de la réponse lue du serveur (aujourd'hui seul le
+délai de 10 s la limite) ; adresses IPv6 entre crochets (`http://[::1]:8080`) non gérées par
+le découpage hôte/port.
