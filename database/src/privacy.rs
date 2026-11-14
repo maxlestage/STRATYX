@@ -123,7 +123,7 @@ impl Database {
     pub fn export(&self) -> Result<DatabaseExport> {
         let tx = self.read()?;
         let mut hands = Vec::new();
-        for row in &tx.rows("SELECT id, donnees FROM main", &[])? {
+        for row in &tx.rows("SELECT id, donnees FROM main_donnees", &[])? {
             hands.push(decode_hand(&text_at(row, 0)?, text_at(row, 1)?.as_bytes())?);
         }
         hands.sort_by(|a, b| a.record.id.cmp(&b.record.id));
