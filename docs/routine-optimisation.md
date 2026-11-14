@@ -750,3 +750,37 @@ ignoré).
 
 **Pistes suivantes.** En attente de la décision de l'utilisateur sur la suite de la routine
 (espacer, réorienter vers des fonctionnalités, ou arrêter).
+
+## 2026-11-14 — Demande de l'utilisateur : Nuage DB remplace PostgreSQL (Neon) pour le site
+
+**Choix** (de l'utilisateur) : Nuage DB **embarqué dans le serveur du site**, à la place de
+la base PostgreSQL gratuite (Neon) de la veille.
+
+**Mise en œuvre** (`site/`) :
+
+- dépendance `nuage` (sans son site web), côté serveur seulement ; Paquets compilé sans
+  `postgres` ;
+- module `base` (`src/main.rs`) : Nuage ouvert au démarrage avec la configuration de
+  `nuage::config::from_vars` (clé `NUAGE_ENCRYPTION_KEY`, sauvegardes `NUAGE_BACKUP_S3_*`
+  ou `NUAGE_BACKUP_DIR`), tables `inscrit` (adresse `UNIQUE`) et `message` créées en SQL ;
+  les formulaires écrivent en SQL paramétré (`ON CONFLICT (email) DO NOTHING`) ; à l'arrêt
+  (`SIGTERM`), point de contrôle, dernière sauvegarde et fermeture ;
+- Nuage a sa propre version de Memoire (`fd1fdd5`), distincte de celle de Paquets
+  (`504e331`) : le site lui parle en SQL, sans modèles partagés ; la base interne de Paquets
+  est fixée en mémoire (`app.database("memory")`), ce qui évite aussi qu'un ancien
+  `DATABASE_URL=postgres://…` empêche le démarrage ;
+- messages d'erreur dédiés si la base est indisponible (« Inscription impossible »,
+  « Votre message n'a pas pu être enregistré ») ;
+- déploiement : les secrets GitHub `NUAGE_*` sont transmis à Heroku et `DATABASE_URL` est
+  retiré ; documentation (site/README.md, README.md) réécrite.
+
+**Vérifié.** Test `les_formulaires_enregistrent_dans_nuage` (une inscription en double
+ignorée, un message enregistré). En local, avec sauvegarde vers un dossier (même mécanisme
+que S3) et chiffrement : trois cycles démarrage → inscription → `SIGTERM` → **effacement du
+dossier de données** → redémarrage : 3 inscriptions restaurées. Mauvaise clé : refus clair au
+démarrage, pages toujours servies. Lint natif et WebAssembly, 17 tests du site, bundle
+`wasm-release` inchangé (Nuage n'y entre pas).
+
+**Reste à faire (utilisateur).** Créer un seau S3 gratuit et ajouter les secrets `NUAGE_*`
+(site/README.md, « Base de données »), sinon la base est perdue à chaque redémarrage.
+L'ancien secret GitHub `DATABASE_URL` (Neon) peut être supprimé.

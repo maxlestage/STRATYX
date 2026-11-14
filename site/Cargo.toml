@@ -24,14 +24,16 @@ stratyx-strategy = { path = "../strategy" }
 stratyx-analytics = { path = "../analytics" }
 stratyx-vision = { path = "../vision" }
 
-# Serveur : Paquets avec PostgreSQL (base « Mémoire » de Paquets, via `DATABASE_URL`) pour que
-# la liste d'attente et les messages survivent aux redémarrages d'Heroku ; en mémoire sans
-# `DATABASE_URL` (développement, tests). Pas de SQLite (bibliothèque C). Le TLS de PostgreSQL
-# passe par rustls + ring (C et assembleur) : exception propre au serveur du site, qui est
-# hors de l'audit `cargo deny` du produit (voir site/README.md, « Base de données »).
+# Serveur : la liste d'attente et les messages vont dans Nuage DB (la base de Memoire, en Rust
+# pur), embarqué dans le serveur, avec ses sauvegardes S3 restaurées au démarrage : le disque
+# d'Heroku est effacé à chaque redémarrage (voir site/README.md, « Base de données »). Nuage est
+# utilisé par son interface SQL : il a sa propre version de Memoire, distincte de celle de
+# Paquets, et les deux ne se croisent pas. Pas de SQLite ni de PostgreSQL dans Paquets.
 # `compress` : réponses en Brotli ou gzip (brotli et flate2/miniz_oxide, en Rust pur).
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-paquets = { git = "https://github.com/maxlestage/Paquets", default-features = false, features = ["postgres", "compress"] }
+paquets = { git = "https://github.com/maxlestage/Paquets", default-features = false, features = ["compress"] }
+# Sans son site web (`default-features = false`) : le moteur, le mode embarqué, les sauvegardes.
+nuage = { git = "https://github.com/maxlestage/Nuage", default-features = false }
 # Pour l'export statique (déjà utilisé par Paquets).
 tokio = { version = "1", features = ["rt-multi-thread"] }
 
