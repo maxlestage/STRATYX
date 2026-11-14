@@ -224,6 +224,10 @@ mod base {
                     .is_ok_and(|ip| ip.is_loopback())
         }
 
+        /// Taille maximale d'une réponse gardée en mémoire : le site ne lit que des comptes et
+        /// des accusés d'écriture (quelques dizaines d'octets) ; au-delà, la lecture s'arrête.
+        const REPONSE_MAX: usize = 1 << 20;
+
         pub struct Serveur {
             https: bool,
             hote: String,
@@ -332,11 +336,10 @@ mod base {
                         .map_err(|e| e.to_string())?
                 };
                 let statut = reponse.status().as_u16();
-                let corps = reponse
-                    .into_body()
+                let corps = http_body_util::Limited::new(reponse.into_body(), REPONSE_MAX)
                     .collect()
                     .await
-                    .map_err(|e| e.to_string())?
+                    .map_err(|e| format!("réponse du serveur Nuage DB : {e}"))?
                     .to_bytes();
                 let texte = String::from_utf8_lossy(&corps);
                 if statut != 200 {
@@ -428,6 +431,31 @@ mod base {
                 let erreur = serveur.sql("SELECT 1", Vec::new()).await.unwrap_err();
                 assert!(erreur.contains("401"), "{erreur}");
                 tache.await.unwrap();
+            }
+
+            #[tokio::test]
+            async fn une_reponse_demesuree_est_abandonnee() {
+                // Juste à la limite : lue en entier.
+                let rempli = "x".repeat(REPONSE_MAX - r#"{"rows":[[""]]}"#.len());
+                let (url, tache) =
+                    faux_serveur("200 OK", &format!(r#"{{"rows":[["{rempli}"]]}}"#)).await;
+                let serveur = Serveur::new(&url, "j".into()).unwrap();
+                let reponse = serveur.sql("SELECT 1", Vec::new()).await.unwrap();
+                assert_eq!(
+                    reponse["rows"][0][0].as_str().map(str::len),
+                    Some(rempli.len())
+                );
+                tache.await.unwrap();
+
+                // Un octet de plus : refusée, que le statut soit 200 ou non.
+                for statut in ["200 OK", "500 Internal Server Error"] {
+                    let (url, _tache) =
+                        faux_serveur(statut, &format!(r#"{{"rows":[["{rempli}x"]]}}"#)).await;
+                    let serveur = Serveur::new(&url, "j".into()).unwrap();
+                    let erreur = serveur.sql("SELECT 1", Vec::new()).await.unwrap_err();
+                    assert!(erreur.contains("length limit exceeded"), "{erreur}");
+                    assert!(erreur.len() < 200, "{}", erreur.len());
+                }
             }
 
             #[test]
