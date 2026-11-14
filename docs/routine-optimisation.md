@@ -1273,3 +1273,31 @@ Toutes les commandes de la CI, workspace et site.
 **Pistes suivantes.** Un test qui exporte le site sous un préfixe et vérifie chaque adresse
 (l'export bascule un état global, `STATIQUE` : à isoler dans son propre binaire de test).
 `style.css` revalidé à chaque page (itération 35).
+
+## 2026-11-14 — Itération 39 : l'export statique sous un préfixe est testé de bout en bout
+
+**CI.** Celle de l'itération 38 (`b2ec992`) est verte et fusionnée dans master.
+
+**Constat.** La régression de l'itération 34 (polices introuvables sur la copie servie sous
+`/STRATYX/`) n'avait été vue par aucun test : seul `prefixer` était testé, sur cinq chaînes.
+
+**Fait.** Nouveau test `site/tests/export.rs` : il lance le binaire comme `pages.yml`
+(`stratyx-site export <dossier>`, `BASE_PATH=/prefixe`, dans son propre processus puisque
+l'export bascule l'état global `STATIQUE`), puis relit tout ce qui est exporté :
+- pages (`href`, `src`, `poster`, `content`, et `action` des formulaires) ;
+- feuilles de style (`url(…)`, absolues ou relatives à la feuille) ;
+- manifeste et service worker (toute chaîne qui commence par `/`).
+
+Chaque adresse du site doit porter le préfixe et désigner un fichier exporté (les `action`
+et `/health`, qui n'existent que sur le serveur : préfixe seulement).
+
+**Mesuré.** 549 adresses vérifiées dans l'export (pages, `style.css`, manifeste, `sw.js`),
+0 cassée. La régression de l'itération 34, remise à la main (`url("/fonts/…")`),
+fait échouer le test en nommant les 4 polices ; avant ce test, rien ne la signalait.
+Durée : 1 s une fois le binaire construit.
+
+**Vérifié.** Toutes les commandes de la CI, workspace et site.
+
+**Pistes suivantes.** Le test ne voit pas les adresses que le WebAssembly des îlots
+construirait à l'exécution (pas de `pkg/` ici ni dans le job de tests). `style.css` revalidé
+à chaque page (itération 35).
