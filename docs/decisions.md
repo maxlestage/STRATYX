@@ -5,7 +5,7 @@ ajoute une nouvelle qui la remplace (« remplace Dx »).
 
 - **D1 à D8** : décisions de cadrage du cahier des charges, **validées le 2026-11-04**
   (D8 remplace D4).
-- **T1 à T13** : décisions techniques qui en découlent. « Acceptée » : déjà appliquée dans
+- **T1 à T14** : décisions techniques qui en découlent. « Acceptée » : déjà appliquée dans
   le code. « Proposée » : à confirmer au début de la phase indiquée.
 
 ---
@@ -274,6 +274,24 @@ politique la plus stricte. Les images ne quittent pas l'appareil.
 les indique pour analyser un spot. L'historique texte de la salle reste la source la plus
 fiable pour une session complète. La lecture des montants demande des captures réelles de
 chaque salle visée.
+
+### T14 — Base locale dans Nuage DB, dépôts Git de l'auteur autorisés — *acceptée*
+
+**Choix.** La base locale (crate `database`, aujourd'hui redb, T3) migre vers **Nuage DB** en
+mode embarqué, la base de l'ORM Memoire, toutes deux écrites par l'auteur de STRATYX. Le
+moteur embarqué est compilé sans ses fonctionnalités par défaut : Rust pur, sans réseau, sans
+`ring` ni `cc` (chiffrement RustCrypto, T4). La migration se fait en trois temps : dépendance
+optionnelle derrière la fonctionnalité `nuage` ; stockage Nuage complet, testé contre les deux
+stockages ; Nuage par défaut avec import automatique des anciennes bases redb, puis retrait
+de redb.
+
+**Exceptions à `deny.toml` (T2), limitées à ces crates.** Les sources Git
+`github.com/maxlestage/Nuage` et `github.com/maxlestage/Memoire` sont autorisées (épinglées
+par révision dans `Cargo.lock`). Leur licence propriétaire (même titulaire des droits que
+STRATYX) est clarifiée par l'empreinte du fichier `LICENSE` et autorisée pour `nuage`,
+`memoire-orm` et `memoire-orm-derive` uniquement : un changement de ce fichier fait échouer
+l'audit jusqu'à relecture. Le script de build de `num-traits` (sonde de `rustc` via autocfg,
+tiré par chrono) est approuvé.
 
 ---
 

@@ -36,6 +36,11 @@ jobs:
       - name: Tests (avec serveur X virtuel pour la capture d'écran)
         if: matrix.os == 'ubuntu-latest'
         run: xvfb-run -a -s "-screen 0 1280x800x24" cargo test --workspace
+      - name: Base locale avec le stockage Nuage DB (fonctionnalité `nuage`, décision T14)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cargo clippy -p stratyx-database --all-targets --features nuage -- -D warnings
+          cargo test -p stratyx-database --features nuage
       - name: Évaluateur exhaustif (133 784 560 mains à 7 cartes)
         if: matrix.os == 'ubuntu-latest'
         run: cargo test --release -p stratyx-poker -- --ignored
