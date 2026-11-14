@@ -565,3 +565,19 @@ dette repérée plutôt que la micro-performance.
   méritent une première brique testée.
 - Documentation : le README (section « État ») ne mentionne ni la base PostgreSQL du site,
   ni la compression, ni les tests de robustesse.
+
+## 2026-11-14 — Itération 19 : README à jour
+
+**CI.** Celle de l'itération 18 est verte et fusionnée.
+
+**Changement** (`README.md`, section « État » et « Démarrer ») :
+
+- la durée annoncée des tests était fausse : « `cargo test --workspace` (≈ 1 s) » ; mesurée,
+  la suite prend **≈ 25 s** sur 4 cœurs une fois compilée (solveur push/fold et table des
+  confrontations à trois, entraînement, capture) ;
+- trois points ajoutés à l'état du projet : tests de robustesse de tout le parcours de `/app`
+  (`*/tests/*robustesse.rs`), compression et base PostgreSQL gratuite du site, lien vers ce
+  journal.
+
+**Pistes suivantes.** En attente d'une décision de l'utilisateur sur la réorientation de la
+routine (fonctionnalités dans les crates squelettes, ou fréquence réduite).

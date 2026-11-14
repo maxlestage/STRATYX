@@ -27,11 +27,20 @@ tournois, sit & go et Expresso.
   `/app`, filmez votre écran, puis analysez chaque spot (décision T13).
 - Base locale (`database`), sécurité (`security`) et capture d'écran native (`capture`) sont
   livrées ; les autres crates sont des squelettes qui matérialisent l'architecture.
+- Robustesse : l'import des historiques (texte et base locale), l'analyse des mains, l'analyse
+  de spot et la vision — tout ce que la page `/app` exécute dans le navigateur — sont couverts
+  par des tests de fuzzing déterministes (`*/tests/*robustesse.rs`) : un historique abîmé, une
+  image quelconque ou un montant illisible donnent une erreur claire, jamais une panique.
+- Site : réponses compressées (Brotli ou gzip) ; liste d'attente et messages dans une base
+  PostgreSQL gratuite (Neon) via `DATABASE_URL`, en mémoire sinon (voir
+  [`site/README.md`](site/README.md), « Base de données »).
+- Optimisations et mesures, itération par itération :
+  [`docs/routine-optimisation.md`](docs/routine-optimisation.md).
 
 ## Démarrer
 
 ```sh
-cargo test --workspace                                # tests (≈ 1 s)
+cargo test --workspace                                # tests (≈ 25 s sur 4 cœurs, une fois compilés)
 cargo test --release -p stratyx-poker -- --ignored    # évaluateur exhaustif, 133 M de mains
 cargo deny check                                      # audit « 100 % Rust » (cargo install cargo-deny)
 
