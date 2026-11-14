@@ -1237,3 +1237,39 @@ détectées sur 5 par le test étendu ; l'ancien n'envoyait aucune de ces demand
 **Vérifié.** Toutes les commandes de la CI, workspace et site.
 
 **Pistes suivantes.** `style.css` revalidé à chaque page (itération 35).
+
+## 2026-11-14 — Itération 38 : polices de la copie GitHub Pages (régression de l'itération 34), corrigée
+
+**CI.** Celle de l'itération 37 (`66b05e1`) est verte et fusionnée dans master.
+
+**Trouvé.** Régression introduite par l'itération 34 : `style.css` appelait les polices par
+une adresse absolue (`url("/fonts/…")`). Sur Heroku (site servi à la racine) tout va bien,
+mais l'export statique (`cargo run -- export`, copie GitHub Pages servie sous `/STRATYX/`)
+copie `style.css` tel quel, sans préfixer ses adresses : les polices y étaient cherchées à
+la racine du domaine (404) et le texte retombait sur les polices du système. Les tests ne le
+voyaient pas : ils ne rendent le site qu'à la racine.
+
+Portée : la copie GitHub Pages ne se déploie plus qu'à la main (`pages.yml`,
+`workflow_dispatch`) ; rien n'indique qu'elle ait été relancée depuis l'itération 34 (non
+vérifié). Le site de production (Heroku) n'a jamais été touché.
+
+**Fait.** Adresses relatives à la feuille de style (`url("fonts/…")`) : justes à la racine
+comme sous un préfixe. Le reste (préchargement dans les pages, pré-cache du service worker)
+était déjà préfixé par l'export.
+
+**Mesuré** (export avec `BASE_PATH=/stratyx`, servi sous ce préfixe, Chromium) :
+
+| Page d'accueil de la copie statique | Avant | Après |
+|---|---:|---:|
+| polices chargées | 0 | 2 (Inter, Space Grotesk) |
+| réponses 404 | 2 (`/fonts/*.woff2`) | 0 |
+
+Site servi par le serveur (racine) : 2 polices chargées, aucune erreur, avant comme après.
+
+**Vérifié.** Le test `aucune_ressource_ne_vient_d_un_tiers` exige maintenant des adresses
+relatives pour les polices et refuse toute adresse absolue (`url("/…")`) dans `style.css`.
+Toutes les commandes de la CI, workspace et site.
+
+**Pistes suivantes.** Un test qui exporte le site sous un préfixe et vérifie chaque adresse
+(l'export bascule un état global, `STATIQUE` : à isoler dans son propre binaire de test).
+`style.css` revalidé à chaque page (itération 35).
