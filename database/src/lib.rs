@@ -60,6 +60,9 @@ mod fingerprint;
 mod hex;
 mod ingest;
 mod migration;
+#[cfg(feature = "nuage")]
+#[allow(dead_code)] // Branché sur `Database` à l'étape b du chantier Nuage.
+mod nuage_store;
 mod privacy;
 mod query;
 mod space;

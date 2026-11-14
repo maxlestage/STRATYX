@@ -18,6 +18,15 @@ thiserror.workspace = true
 redb = { version = "4.4", default-features = false, features = ["std"] }
 # SHA-256 en Rust pur (RustCrypto), sans assembleur ni identifiants OID.
 sha2 = { version = "0.11", default-features = false }
+# Nuage DB embarqué (moteur seul, `default-features = false` : Rust pur, sans réseau), futur
+# stockage de la base locale (chantier Nuage, docs/routine-optimisation.md). Optionnel tant que
+# le stockage redb reste celui par défaut. Épinglé sur la branche `claude/nuage-100-rust` de
+# Nuage (moteur embarqué sans ring), non encore fusionnée.
+nuage = { git = "https://github.com/maxlestage/Nuage", rev = "5fd8056", default-features = false, optional = true }
+
+[features]
+## Le stockage Nuage DB (en cours de construction ; redb reste le stockage par défaut).
+nuage = ["dep:nuage"]
 
 [dev-dependencies]
 # Fuzzing déterministe de l'import (tests/import_robustesse.rs).
