@@ -607,3 +607,30 @@ Aucune correction nécessaire.
 
 **Pistes suivantes.** En attente de la décision de l'utilisateur sur la réorientation de la
 routine (fonctionnalités dans les crates squelettes, ou fréquence réduite).
+
+## 2026-11-14 — Itération 21 : CLI `stratyx` testée ; deux défauts ICM corrigés
+
+**CI.** Celle de l'itération 20 est verte et fusionnée.
+
+**Constat.** `tools/cli` (la commande `stratyx` du README : `eval`, `equity`, `range`, `icm`,
+`analyse`) n'avait aucun test.
+
+**Changement.** Tests passant par `run()` : chaque exemple du README réussit (dont `analyse`
+d'un historique, en texte et en JSON) ; 18 arguments invalides (commande inconnue, cartes en
+double ou illisibles, board de 2 cartes, `--samples` sans valeur ou non numérique, range
+illisible, tapis nuls, négatifs ou manquants, prix `NaN,inf`, fichier absent) donnent une
+erreur, jamais une panique. Ils ont trouvé deux défauts :
+
+- **`stratyx icm` avec des tapis géants** (`--stacks 18446744073709551615,…`) : la somme
+  entière des tapis, qui ne sert qu'à afficher la part des jetons, débordait (panique en debug,
+  pourcentages faux en release). Elle est calculée en `f64` ; l'équité ICM elle-même était
+  juste (vérifié : deux tapis égaux à 2⁶⁴ − 1 → 40 chacun pour des prix 50 et 30).
+- **Prix `NaN`, infinis ou négatifs** : `poker::icm::icm_equities` les acceptait et renvoyait
+  des équités `NaN` sans erreur — y compris pour le calculateur ICM du site, qui lit les prix
+  saisis. Nouvelle erreur `IcmError::Payout` (« le prix 1 est invalide (NaN) : un nombre
+  positif ou nul est attendu »), test `invalid_payouts_are_rejected`. Le solveur push/fold
+  validait déjà ses prix en amont : son `expect` reste sûr.
+
+**Pistes suivantes.** `capture` (873 lignes, 3 tests) et `shared` (4 tests) sont les crates
+livrés les moins testés ; en attente de la décision de l'utilisateur sur la réorientation de
+la routine.

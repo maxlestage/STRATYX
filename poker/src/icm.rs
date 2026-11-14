@@ -14,6 +14,8 @@ pub enum IcmError {
     PlayerCount(usize),
     #[error("le joueur {0} a un tapis nul")]
     EmptyStack(usize),
+    #[error("le prix {} est invalide ({value}) : un nombre positif ou nul est attendu", .index + 1)]
+    Payout { index: usize, value: String },
 }
 
 /// Probabilités de finir à chaque place : `result[joueur][place]` (place 0 = premier).
@@ -57,6 +59,17 @@ pub fn finish_probabilities(stacks: &[Chips], places: usize) -> Result<Vec<Vec<f
 /// Équité ICM de chaque joueur, dans l'unité des `payouts` (montants ou fractions du
 /// prize pool). `payouts[0]` est le prix du premier.
 pub fn icm_equities(stacks: &[Chips], payouts: &[f64]) -> Result<Vec<f64>, IcmError> {
+    // Un prix « NaN » ou « inf » (saisi ou lu) donnait des équités NaN sans erreur.
+    if let Some((index, &value)) = payouts
+        .iter()
+        .enumerate()
+        .find(|(_, p)| !p.is_finite() || **p < 0.0)
+    {
+        return Err(IcmError::Payout {
+            index,
+            value: value.to_string(),
+        });
+    }
     let finish = finish_probabilities(stacks, payouts.len())?;
     Ok(finish
         .iter()
@@ -70,6 +83,26 @@ mod tests {
 
     fn chips(v: &[u64]) -> Vec<Chips> {
         v.iter().map(|c| Chips(*c)).collect()
+    }
+
+    #[test]
+    fn invalid_payouts_are_rejected() {
+        let stacks = chips(&[500, 300]);
+        for (payouts, index) in [
+            (vec![f64::NAN, 1.0], 0),
+            (vec![50.0, f64::INFINITY], 1),
+            (vec![50.0, -1.0], 1),
+        ] {
+            assert!(
+                matches!(icm_equities(&stacks, &payouts), Err(IcmError::Payout { index: i, .. }) if i == index),
+                "{payouts:?}"
+            );
+        }
+        assert_eq!(
+            icm_equities(&stacks, &[f64::NAN]).unwrap_err().to_string(),
+            "le prix 1 est invalide (NaN) : un nombre positif ou nul est attendu"
+        );
+        assert!(icm_equities(&stacks, &[50.0, 0.0]).is_ok());
     }
 
     #[test]
