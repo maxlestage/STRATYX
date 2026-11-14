@@ -1081,3 +1081,29 @@ Base tenue pour de bon : toujours refusée, en 2 s au lieu de 0.
 **Pistes suivantes.** En amont (Nuage) : que `Engine::close` attende la fin du passage du
 fil d'entretien rendrait l'attente inutile — à décider par l'utilisateur. Adresses IPv6
 entre crochets dans `NUAGE_URL`.
+
+## 2026-11-14 — Itération 33 : `NUAGE_URL` en IPv6 (adresse entre crochets)
+
+**CI.** Celle de l'itération 32 (`fa35047`) est verte et fusionnée dans master (les
+itérations 31 et 32 sont donc déployées).
+
+**Trouvé.** Le découpage hôte/port de `NUAGE_URL` (`base::distant`, site) coupait au dernier
+`:` : `https://[2001:db8::1]` donnait « port invalide », et `http://[::1]:8080` (serveur
+local) était pris pour une adresse distante, donc refusé depuis l'itération 30.
+
+**Fait.** Une adresse entre crochets est lue comme IPv6 (vérifiée, port facultatif après le
+crochet), gardée sans crochets pour la connexion et le nom TLS, remise entre crochets dans
+l'en-tête `Host`. Une IPv6 sans crochets est refusée avec la marche à suivre.
+`site/README.md` le précise.
+
+**Mesuré.** Sur 10 adresses IPv6 de test : 3 valides acceptées (0 avant), 7 invalides
+refusées avec un message qui dit quoi corriger (crochet non fermé, port, IPv6 nue, nom entre
+crochets, `http://` vers une IPv6 distante).
+
+**Vérifié.** Tests `les_adresses_ipv6_sont_entre_crochets` et `un_serveur_en_ipv6_est_joint`
+(requête réelle à un faux serveur sur `[::1]`). **Limite :** ce bac à sable n'a pas d'IPv6 ;
+le second test s'y déclare sans objet et ne s'exécute vraiment que là où `[::1]` existe (CI).
+Toutes les commandes de la CI, workspace et site.
+
+**Pistes suivantes.** Le client du site n'a plus de piste ouverte. En amont (Nuage) :
+fermeture qui attend le fil d'entretien (itération 32).
