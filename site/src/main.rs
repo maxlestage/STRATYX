@@ -59,11 +59,11 @@ mod base {
     }
 
     fn ouvrir() -> Result<Embedded, String> {
-        let config =
-            nuage::config::from_vars(|k| std::env::var(k).ok()).map_err(|e| e.to_string())?;
-        let sauvegardes = config.engine.backup.as_ref().map(|b| b.store.describe());
+        let (_, engine) = nuage::config::engine_from_vars(|k| std::env::var(k).ok())
+            .map_err(|e| e.to_string())?;
+        let sauvegardes = engine.backup.as_ref().map(|b| b.store.describe());
         let dir = dossier();
-        let base = Embedded::open_with(&dir, config.engine).map_err(|e| e.to_string())?;
+        let base = Embedded::open_with(&dir, engine).map_err(|e| e.to_string())?;
         base.sql(SCHEMA, &[]).map_err(|e| e.to_string())?;
         if let Some(vers) = sauvegardes {
             eprintln!(

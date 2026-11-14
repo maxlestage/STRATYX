@@ -2,21 +2,18 @@
 
 use std::io::Write;
 
-use redb::{ReadableDatabase, ReadableMultimapTable, ReadableTable};
 use serde::{Deserialize, Serialize};
 use stratyx_poker::Session;
 
 use crate::error::{DatabaseError, Result};
 use crate::ingest::IngestReport;
 use crate::migration::SCHEMA_VERSION;
-use crate::space::Space;
+use crate::sql::text_at;
 use crate::store::{
-    Database, StoreMode, StoredHand, decode_hand, read_hand_in, remove_hand, space_tables,
-    store_hand,
+    Database, StoreMode, StoredHand, decode_hand, from_json, read_hand_in, remove_hand, store_hand,
 };
 use crate::strategy::StrategyEntry;
-use crate::tables::{INGESTIONS, PROFILES, PROGRESS, SESSIONS, STRATEGY_DATA, STRATEGY_ENTRIES};
-use crate::users::{ProgressEntry, UserProfile, read_all};
+use crate::users::{ProgressEntry, UserProfile, parse_all, progress_in};
 
 /// Mode d'effacement d'un joueur.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,92 +72,87 @@ impl Database {
         if player.trim().is_empty() {
             return Err(DatabaseError::EmptyId("joueur"));
         }
-        let txn = self.db.begin_write()?;
-        let mut ids = Vec::new();
-        for space in Space::HAND_SPACES {
-            let table = txn.open_multimap_table(space_tables(space)?.by_player)?;
-            for v in table.get(player)? {
-                ids.push(v?.value().to_string());
-            }
-        }
-        let mut report = ErasureReport::default();
-        for id in ids {
-            match mode {
-                Erasure::DeleteHands => {
-                    if remove_hand(&txn, &id)?.is_some() {
-                        report.hands_deleted += 1;
-                    }
-                }
-                Erasure::Anonymize => {
-                    let Some(stored) = read_hand_in(&txn, &id)? else {
-                        continue;
-                    };
-                    let mut record = stored.record;
-                    let taken: Vec<String> =
-                        record.seats.iter().map(|s| s.player.clone()).collect();
-                    for seat in &mut record.seats {
-                        if seat.player == player {
-                            let mut label = format!("Anonyme (siège {})", seat.seat);
-                            while taken.contains(&label) {
-                                label.push('*');
-                            }
-                            seat.player = label;
+        self.write(|tx| {
+            let mut ids = tx.texts(
+                "SELECT main FROM main_joueur WHERE joueur = ?",
+                &[player.into()],
+            )?;
+            ids.sort();
+            ids.dedup();
+            let mut report = ErasureReport::default();
+            for id in ids {
+                match mode {
+                    Erasure::DeleteHands => {
+                        if remove_hand(tx, &id)?.is_some() {
+                            report.hands_deleted += 1;
                         }
                     }
-                    store_hand(
-                        &txn,
-                        &record,
-                        self.review_threshold,
-                        stored.batch_id.as_deref(),
-                        StoreMode::Force,
-                    )?;
-                    report.hands_anonymized += 1;
+                    Erasure::Anonymize => {
+                        let Some(stored) = read_hand_in(tx, &id)? else {
+                            continue;
+                        };
+                        let mut record = stored.record;
+                        let taken: Vec<String> =
+                            record.seats.iter().map(|s| s.player.clone()).collect();
+                        for seat in &mut record.seats {
+                            if seat.player == player {
+                                let mut label = format!("Anonyme (siège {})", seat.seat);
+                                while taken.contains(&label) {
+                                    label.push('*');
+                                }
+                                seat.player = label;
+                            }
+                        }
+                        store_hand(
+                            tx,
+                            &record,
+                            self.review_threshold,
+                            stored.batch_id.as_deref(),
+                            StoreMode::Force,
+                        )?;
+                        report.hands_anonymized += 1;
+                    }
                 }
             }
-        }
-        txn.commit()?;
-        Ok(report)
+            Ok(report)
+        })
     }
 
     /// Export complet : mains (avec statut et empreinte), sessions, utilisateurs et
     /// progression, stratégie, rapports d'ingestion.
     pub fn export(&self) -> Result<DatabaseExport> {
-        let txn = self.db.begin_read()?;
+        let tx = self.read()?;
         let mut hands = Vec::new();
-        for space in Space::HAND_SPACES {
-            let table = txn.open_table(space_tables(space)?.hands)?;
-            for entry in table.iter()? {
-                let (k, v) = entry?;
-                hands.push(decode_hand(k.value(), v.value())?);
-            }
+        for row in &tx.rows("SELECT id, donnees FROM main", &[])? {
+            hands.push(decode_hand(&text_at(row, 0)?, text_at(row, 1)?.as_bytes())?);
         }
         hands.sort_by(|a, b| a.record.id.cmp(&b.record.id));
-        let mut sessions: Vec<Session> = read_all(&txn.open_table(SESSIONS)?)?;
+        let mut sessions: Vec<Session> = parse_all(tx.texts("SELECT donnees FROM session", &[])?)?;
         sessions.sort_by(|a, b| a.id.cmp(&b.id));
-        let progress = txn.open_table(PROGRESS)?;
+        let mut profiles: Vec<UserProfile> =
+            parse_all(tx.texts("SELECT donnees FROM profil", &[])?)?;
+        profiles.sort_by(|a, b| a.id.cmp(&b.id));
         let mut users = Vec::new();
-        for profile in read_all::<UserProfile>(&txn.open_table(PROFILES)?)? {
-            let entries = match progress.get(profile.id.as_str())? {
-                Some(v) => serde_json::from_slice(v.value())?,
-                None => Vec::new(),
-            };
-            users.push(UserExport {
-                profile,
-                progress: entries,
-            });
+        for profile in profiles {
+            let progress = progress_in(&tx, &profile.id)?;
+            users.push(UserExport { profile, progress });
         }
-        let data = txn.open_table(STRATEGY_DATA)?;
         let mut strategy = Vec::new();
-        for entry in read_all::<StrategyEntry>(&txn.open_table(STRATEGY_ENTRIES)?)? {
-            let bytes = data.get(entry.key.as_str())?.ok_or_else(|| {
-                DatabaseError::Corrupted(format!("données de « {} » absentes", entry.key))
-            })?;
-            strategy.push(StrategyExport {
-                data_hex: crate::hex::encode(bytes.value()),
-                entry,
-            });
+        for row in &tx.rows("SELECT entree, donnees FROM strategie", &[])? {
+            let entry: StrategyEntry = from_json(text_at(row, 0)?.as_bytes())?;
+            let data_hex = text_at(row, 1)?;
+            if crate::hex::decode(&data_hex).is_none() {
+                return Err(DatabaseError::Corrupted(format!(
+                    "données de « {} » illisibles",
+                    entry.key
+                )));
+            }
+            strategy.push(StrategyExport { entry, data_hex });
         }
-        let ingestions = read_all(&txn.open_table(INGESTIONS)?)?;
+        strategy.sort_by(|a, b| a.entry.key.cmp(&b.entry.key));
+        let mut ingestions: Vec<IngestReport> =
+            parse_all(tx.texts("SELECT rapport FROM ingestion", &[])?)?;
+        ingestions.sort_by(|a, b| a.batch_id.cmp(&b.batch_id));
         Ok(DatabaseExport {
             format: EXPORT_FORMAT.to_string(),
             schema_version: SCHEMA_VERSION,

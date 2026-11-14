@@ -70,7 +70,7 @@ cargo run --release -p stratyx-ai-training --bin stratyx-train -- --archives arc
 | `capture` | capture d'écran native : X11 en Rust pur, Windows GDI (macOS et Wayland à venir) | 2 🟡 |
 | `video` | import, décodage, enregistrement | 2 |
 | `transcription` | états de table observés → historiques validés (contrats communs) | 3 |
-| `database` | base locale redb en cinq espaces, déduplication, ingestion d'archives (D5), RGPD, import et export PokerStars | 3 ✅ |
+| `database` | base locale Nuage DB (embarquée, SQL) en cinq espaces, import des anciennes bases redb, déduplication, ingestion d'archives (D5), RGPD, import et export PokerStars | 3 ✅ |
 | `ai/inference` | exécution des modèles lourds sur CPU ou GPU (Burn) | 4 |
 | `coaching` | exercices, quiz, parcours | 6 |
 | `apps/*` | bureau, mobile, serveur et API | 7 |

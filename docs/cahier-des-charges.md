@@ -123,7 +123,7 @@ de `decisions.md`.
 |---|---|---|
 | 1 | Fondations Rust et moteur poker | **En cours** : moteur livré (voir ci-dessous) |
 | 2 | Capture vidéo et reconnaissance | **Commencée** : capture native X11 et Windows, capture dans le navigateur et reconnaissance des cartes (T13) |
-| 3 | Retranscription automatique | Format pivot, validation par rejeu, import des historiques texte (PokerStars, Winamax) et base locale redb livrés |
+| 3 | Retranscription automatique | Format pivot, validation par rejeu, import des historiques texte (PokerStars, Winamax) et base locale (Nuage DB) livrés |
 | 4 | IA Expresso et IA Tournois | **En cours** : première version livrée (voir ci-dessous) |
 | 5 | Analyses et statistiques | **Livrée** : profils, résultats, tournois, fuites, revue des mains et bilan de session |
 | 6 | Coaching et simulations | À faire |
@@ -186,7 +186,7 @@ de `decisions.md`.
 ### Autres livraisons (branche des phases 2 à 8)
 
 - `capture` : trait `ScreenCapturer`, X11 en Rust pur (testé sous Xvfb), Windows GDI.
-- `database` : base redb en cinq espaces, empreintes SHA-256, ingestion d'archives avec
+- `database` : base Nuage DB embarquée en cinq espaces (import des anciennes bases redb), empreintes SHA-256, ingestion d'archives avec
   provenance et licence (D5), sessions et progression, RGPD, import et export PokerStars.
 - `strategy` : matrice d'équité préflop 169 × 169 embarquée, équilibres push/fold par CFR+
   (tête-à-tête en chipEV, 3-max en chipEV ou ICM, exploitabilité mesurée), solveur de river
