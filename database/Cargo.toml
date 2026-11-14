@@ -17,7 +17,7 @@ thiserror.workspace = true
 sha2 = { version = "0.11", default-features = false }
 # Nuage DB embarqué : la base locale (décision T14). Moteur seul (`default-features = false`) :
 # Rust pur, sans réseau, chiffrement RustCrypto.
-nuage = { git = "https://github.com/maxlestage/Nuage", rev = "23eb6fc", default-features = false }
+nuage = { git = "https://github.com/maxlestage/Nuage", rev = "997927b", default-features = false }
 # Les valeurs des lignes SQL de Nuage (même crate que celui de Nuage, aucune dépendance de plus).
 memoire-orm = { git = "https://github.com/maxlestage/Memoire", rev = "074fbde", default-features = false }
 # Ancien stockage (redb, décision T3), lu une seule fois pour importer une ancienne base.
