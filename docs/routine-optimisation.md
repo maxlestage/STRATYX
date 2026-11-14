@@ -872,3 +872,60 @@ encore des paniques de redb 4.6 (utilisé par Nuage pour ses pages), il reste ig
 
 **Chantier Nuage : terminé.** Reste (facultatif) : rapporter le défaut de redb en amont ;
 créer le seau S3 du site (secrets `NUAGE_*`).
+
+## 2026-11-14 — Demande de l'utilisateur : configuration de Heroku
+
+L'app Heroku `stratyx` (stack heroku-26, Europe, dyno eco) existait déjà et se déploie par
+l'intégration GitHub de Heroku (chaque fusion dans master est compilée) ; le workflow
+`heroku.yml` est sauté faute de secret `HEROKU_API_KEY` et de variable `HEROKU_APP_NAME`
+côté GitHub. L'app n'avait **aucune variable de configuration**. Réglé par l'API Heroku :
+
+- `SITE_URL` = `https://stratyx-075b7d703eed.herokuapp.com` (liens canoniques, plan du site
+  et robots.txt) ;
+- `NUAGE_NAME` = `stratyx` et `NUAGE_ENCRYPTION_KEY` (clé aléatoire de 256 bits, générée
+  sur place, jamais écrite ailleurs que dans la configuration de l'app) : la base Nuage DB
+  du site est chiffrée.
+
+**Vérifié.** Redémarrage du dyno, `/health` 200, `sitemap.xml` sur l'adresse publique, base
+ouverte sans erreur avec la clé (journaux de l'app).
+
+**Reste (utilisateur).** Les sauvegardes S3 (`NUAGE_BACKUP_S3_*`) demandent un seau à son
+nom : sans elles, la liste d'attente et les messages sont perdus à chaque redémarrage du
+dyno. Si les secrets GitHub `NUAGE_*` sont ajoutés un jour pour le workflow, y reprendre la
+même `NUAGE_ENCRYPTION_KEY` que l'app (sinon la base sauvegardée serait illisible).
+
+## 2026-11-14 — Itération 28 : recherche et lecture de la base locale 2 à 2,5 fois plus rapides
+
+**Mesuré** (nouvel exemple `cargo run --release -p stratyx-database --example mesure_base --
+5000` : mains distinctes, moitié écrites une à une, moitié ingérées en lot). Sur Nuage DB,
+le coût d'un parcours est celui des lignes lues : la main complète (plusieurs Ko de JSON)
+était dans la même ligne que les colonnes de recherche, et une recherche paginée relisait et
+désérialisait le résumé de chaque candidat. Banc SQL isolé, 5 000 lignes : un parcours
+passe de 4,6 ms à 48,8 ms quand chaque ligne porte 8 Ko de plus.
+
+**Fait.**
+- Schéma : la main complète va dans `main_donnees` (identifiant → JSON) ; `main` ne garde
+  que les colonnes indexées et le résumé. Le schéma 1 de Nuage n'a encore été écrit par
+  aucune application (le crate n'est utilisé que par ses tests) : modifié sans migration.
+- Recherche : quand tous les filtres sont des colonnes indexées (espace, joueur, session,
+  format, type de partie, statut, période), un seul passage lit l'identifiant et la date des
+  candidats, le tri et la page se font dessus, puis seuls les 20 résumés de la page sont
+  relus. Les filtres sur le résumé (salle, résultat du héros, abattage) gardent le parcours.
+- Écriture d'une main : une seule requête (ligne, données, empreinte, joueurs en une
+  insertion de plusieurs lignes) au lieu de 3 + un par joueur.
+
+| 5 000 mains | Avant | Après |
+|---|---:|---:|
+| recherche par joueur (page de 20) | 43,4 ms | 21,5 ms |
+| recherche sans filtre (page de 20) | 21,8 ms | 9,6 ms |
+| recherche par salle (parcours) | 18,9 ms | 18,9 ms |
+| lecture d'une main | 87 µs | 35 à 48 µs |
+| ingestion de 2 500 mains | 1,45 s | 1,18 s |
+
+L'écriture une à une reste vers 0,65 ms par main : c'est le rejeu de validation et la
+validation de la transaction, pas le SQL.
+
+**Vérifié.** Nouveau test `search_in_base_matches_the_scan` : pour 72 combinaisons (9
+filtres indexés × 2 ordres × 4 pages, avec dates en double et mains sans date), la recherche
+par la base donne exactement le résultat du parcours un à un. Lint et tests du workspace,
+base sans `import-redb`, `cargo deny check`.

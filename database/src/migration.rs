@@ -53,9 +53,10 @@ CREATE TABLE IF NOT EXISTS migration (
     appliquee_le BIGINT NOT NULL
 )";
 
-/// Schéma 1. Une main est une ligne de `main` (main enregistrée et résumé en JSON, colonnes
-/// indexées pour la recherche) ; `main_joueur` indexe ses joueurs ; `empreinte` désigne la
-/// main qui porte chaque empreinte (déduplication).
+/// Schéma 1. Une main est une ligne de `main` (résumé en JSON, colonnes indexées pour la
+/// recherche) et une de `main_donnees` (la main enregistrée, plusieurs Ko : à part, pour que
+/// la recherche ne parcoure que des lignes courtes) ; `main_joueur` indexe ses joueurs ;
+/// `empreinte` désigne la main qui porte chaque empreinte (déduplication).
 const SCHEMA_V1: &str = "\
 CREATE TABLE main (
     id TEXT PRIMARY KEY,
@@ -66,9 +67,9 @@ CREATE TABLE main (
     validation TEXT NOT NULL,
     a_revoir INTEGER NOT NULL,
     joue_le BIGINT,
-    donnees TEXT NOT NULL,
     resume TEXT NOT NULL
 );
+CREATE TABLE main_donnees (id TEXT PRIMARY KEY, donnees TEXT NOT NULL);
 CREATE INDEX main_espace ON main (espace);
 CREATE INDEX main_session ON main (session);
 CREATE INDEX main_format ON main (format);

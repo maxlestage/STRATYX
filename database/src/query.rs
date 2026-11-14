@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 use stratyx_poker::game::BettingStructure;
 use stratyx_poker::{GameFormat, GameType};
 
-use crate::error::Result;
+use crate::error::{DatabaseError, Result};
 use crate::space::Space;
+use crate::sql::{int_at, text_at, to_u64};
 use crate::status::{HandSummary, ValidationKind};
 use crate::store::{Database, from_json};
 
@@ -220,14 +221,19 @@ impl HandQuery {
     }
 }
 
-/// Clé d'index stable d'un format : `cash_game-6-nl`, `tournament-9-fl4c`…
-pub(crate) fn format_key(f: GameFormat) -> String {
-    let game = match f.game_type {
+/// Début de la clé d'index d'un format : le type de partie.
+fn game_key(g: GameType) -> &'static str {
+    match g {
         GameType::CashGame => "cash_game",
         GameType::Tournament => "tournament",
         GameType::SitAndGo => "sit_and_go",
         GameType::Expresso => "expresso",
-    };
+    }
+}
+
+/// Clé d'index stable d'un format : `cash_game-6-nl`, `tournament-9-fl4c`…
+pub(crate) fn format_key(f: GameFormat) -> String {
+    let game = game_key(f.game_type);
     let structure = match f.structure {
         BettingStructure::NoLimit => "nl".to_string(),
         BettingStructure::PotLimit => "pl".to_string(),
@@ -243,12 +249,35 @@ pub(crate) fn format_key(f: GameFormat) -> String {
     format!("{game}-{}-{structure}", f.table_size)
 }
 
-impl Database {
-    /// Recherche des mains. Les résultats sont triés par date (voir [`SortOrder`]), puis par
-    /// identifiant ; la pagination s'applique après le tri.
-    pub fn search(&self, query: &HandQuery) -> Result<HandPage> {
-        // Les colonnes indexées réduisent les candidats ; `matches` vérifie ensuite chaque
-        // filtre sur le résumé (salle, résultat du héros, abattage, type de partie…).
+/// Ordre des résultats : par date (voir [`SortOrder`], sans date en dernier), puis par
+/// identifiant.
+fn by_date_then_id(
+    order: SortOrder,
+    (a_date, a_id): (Option<u64>, &str),
+    (b_date, b_id): (Option<u64>, &str),
+) -> std::cmp::Ordering {
+    let date = match (a_date, b_date) {
+        (Some(x), Some(y)) => match order {
+            SortOrder::NewestFirst => y.cmp(&x),
+            SortOrder::OldestFirst => x.cmp(&y),
+        },
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    };
+    date.then_with(|| a_id.cmp(b_id))
+}
+
+/// Filtres d'une requête traduits en conditions SQL sur les colonnes indexées de `main`.
+struct Conditions {
+    sql: String,
+    params: Vec<serde_json::Value>,
+    /// Tous les filtres sont traduits : le tri et la pagination peuvent se faire en SQL.
+    complete: bool,
+}
+
+impl Conditions {
+    fn of(query: &HandQuery) -> Conditions {
         let mut conditions: Vec<&str> = Vec::new();
         let mut params: Vec<serde_json::Value> = Vec::new();
         if let Some(space) = query.space {
@@ -275,6 +304,11 @@ impl Database {
             conditions.push("format = ?");
             params.push(format_key(format).into());
         }
+        if let Some(game) = query.game_type {
+            // Les clés de type de partie ne contiennent ni `%` ni `-` : le préfixe suffit.
+            conditions.push("format LIKE ?");
+            params.push(format!("{}-%", game_key(game)).into());
+        }
         if let Some(from) = query.played_from_ms {
             conditions.push("joue_le >= ?");
             params.push(from.into());
@@ -283,29 +317,97 @@ impl Database {
             conditions.push("joue_le < ?");
             params.push(until.into());
         }
-        let mut sql = String::from("SELECT resume FROM main");
-        if !conditions.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&conditions.join(" AND "));
+        let sql = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!(" WHERE {}", conditions.join(" AND "))
+        };
+        Conditions {
+            sql,
+            params,
+            complete: query.site.is_none()
+                && query.hero_result.is_none()
+                && query.showdown.is_none(),
         }
+    }
+}
+
+impl Database {
+    /// Recherche des mains. Les résultats sont triés par date (voir [`SortOrder`]), puis par
+    /// identifiant ; la pagination s'applique après le tri.
+    ///
+    /// Quand tous les filtres portent sur des colonnes indexées (espace, joueur, session,
+    /// format, type de partie, statut, période), la base les applique, le tri se fait sur
+    /// l'identifiant et la date seuls, et seuls les résumés de la page sont relus. Sinon
+    /// (salle, résultat du héros, abattage), chaque résumé candidat est relu et filtré.
+    pub fn search(&self, query: &HandQuery) -> Result<HandPage> {
+        let c = Conditions::of(query);
+        if c.complete {
+            self.search_in_base(query, &c)
+        } else {
+            self.search_by_scan(query, &c)
+        }
+    }
+
+    fn search_in_base(&self, query: &HandQuery, c: &Conditions) -> Result<HandPage> {
+        let tx = self.read()?;
+        // Un seul passage sur les candidats, sans relire leur résumé : identifiant et date.
+        let mut keys = tx
+            .rows(&format!("SELECT id, joue_le FROM main{}", c.sql), &c.params)?
+            .iter()
+            .map(|row| Ok((text_at(row, 0)?, int_at(row, 1)?.map(to_u64).transpose()?)))
+            .collect::<Result<Vec<(String, Option<u64>)>>>()?;
+        keys.sort_by(|a, b| by_date_then_id(query.order, (a.1, &a.0), (b.1, &b.0)));
+        let total = keys.len();
+        let page: Vec<String> = keys
+            .into_iter()
+            .skip(query.offset)
+            .take(query.limit.unwrap_or(usize::MAX))
+            .map(|(id, _)| id)
+            .collect();
+        if page.is_empty() {
+            return Ok(HandPage {
+                total,
+                items: Vec::new(),
+            });
+        }
+        // Puis les résumés de la page seulement, remis dans l'ordre du tri.
+        let marks = vec!["?"; page.len()].join(", ");
+        let params: Vec<serde_json::Value> = page.iter().map(|id| id.as_str().into()).collect();
+        let mut summaries: std::collections::HashMap<String, HandSummary> = tx
+            .rows(
+                &format!("SELECT id, resume FROM main WHERE id IN ({marks})"),
+                &params,
+            )?
+            .iter()
+            .map(|row| Ok((text_at(row, 0)?, from_json(text_at(row, 1)?.as_bytes())?)))
+            .collect::<Result<_>>()?;
+        let items = page
+            .iter()
+            .map(|id| {
+                summaries
+                    .remove(id)
+                    .ok_or_else(|| DatabaseError::Corrupted(format!("résumé de « {id} » absent")))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(HandPage { total, items })
+    }
+
+    fn search_by_scan(&self, query: &HandQuery, c: &Conditions) -> Result<HandPage> {
         let mut items = Vec::new();
-        for json in self.read()?.texts(&sql, &params)? {
+        let sql = format!("SELECT resume FROM main{}", c.sql);
+        for json in self.read()?.texts(&sql, &c.params)? {
             let s: HandSummary = from_json(json.as_bytes())?;
             if query.matches(&s) {
                 items.push(s);
             }
         }
         items.sort_by(|a, b| {
-            let date = match (a.played_at_ms, b.played_at_ms) {
-                (Some(x), Some(y)) => match query.order {
-                    SortOrder::NewestFirst => y.cmp(&x),
-                    SortOrder::OldestFirst => x.cmp(&y),
-                },
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => std::cmp::Ordering::Equal,
-            };
-            date.then_with(|| a.id.cmp(&b.id))
+            by_date_then_id(
+                query.order,
+                (a.played_at_ms, &a.id),
+                (b.played_at_ms, &b.id),
+            )
         });
         let total = items.len();
         let items = items
@@ -320,6 +422,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::space::Space;
 
     #[test]
     fn format_keys_are_distinct() {
@@ -340,5 +443,61 @@ mod tests {
         assert_eq!(b, "tournament-6-nl");
         assert_eq!(c, "cash_game-9-fl4u");
         assert_ne!(c, d);
+    }
+
+    /// La recherche faite par la base donne exactement le résultat du parcours un à un, pour
+    /// toutes les combinaisons de filtres indexés, d'ordre et de page.
+    #[test]
+    fn search_in_base_matches_the_scan() {
+        use crate::text::{ImportOptions, import_pokerstars};
+
+        let db = Database::in_memory().unwrap();
+        let mut hands = Vec::new();
+        for text in [
+            include_str!("../tests/data/pokerstars_cash_nl6.txt"),
+            include_str!("../tests/data/pokerstars_tournament_antes.txt"),
+            include_str!("../tests/data/pokerstars_fixed_limit.txt"),
+        ] {
+            for h in import_pokerstars(text, &ImportOptions::default()) {
+                hands.push(h.unwrap().record);
+            }
+        }
+        // Des dates en double, des mains sans date, des sessions : le tri doit départager.
+        for (i, h) in hands.iter_mut().enumerate() {
+            h.meta.played_at_ms = (i % 4 != 0).then_some((i as u64 % 3) * 1_000);
+            h.meta.session_id = Some(format!("s{}", i % 2));
+        }
+        for h in &hands {
+            db.put_hand(h).unwrap();
+        }
+        let player = hands[0].seats[0].player.clone();
+        let mut queries = Vec::new();
+        for order in [SortOrder::NewestFirst, SortOrder::OldestFirst] {
+            for (offset, limit) in [(0, None), (0, Some(2)), (1, Some(3)), (50, Some(5))] {
+                let base = HandQuery {
+                    order,
+                    offset,
+                    limit,
+                    ..HandQuery::new()
+                };
+                queries.push(base.clone());
+                queries.push(base.clone().player(player.clone()));
+                queries.push(base.clone().session("s1"));
+                queries.push(base.clone().space(Space::Holdem));
+                queries.push(base.clone().game_type(GameType::Tournament));
+                queries.push(base.clone().format(hands[0].format));
+                queries.push(base.clone().between(500, 2_000));
+                queries.push(base.clone().needs_review(false));
+                queries.push(base.clone().validation(ValidationKind::Valid));
+            }
+        }
+        for q in &queries {
+            let c = Conditions::of(q);
+            assert!(c.complete);
+            let fast = db.search_in_base(q, &c).unwrap();
+            let scan = db.search_by_scan(q, &c).unwrap();
+            assert_eq!(fast, scan, "{q:?}");
+        }
+        assert!(db.search(&HandQuery::new()).unwrap().total == hands.len());
     }
 }
