@@ -35,7 +35,7 @@ paquets = { git = "https://github.com/maxlestage/Paquets", default-features = fa
 # Moteur embarqué seul (`default-features = false` : ni serveur ni site web), plus `s3` pour
 # les sauvegardes vers un seau S3 (NUAGE_BACKUP_S3_*). Épinglé comme la base locale (crate
 # `database`) : Nuage DB écrit ses propres pages, sans redb.
-nuage = { git = "https://github.com/maxlestage/Nuage", rev = "7ce16d2", default-features = false, features = ["s3"] }
+nuage = { git = "https://github.com/maxlestage/Nuage", rev = "ce8395d", default-features = false, features = ["s3"] }
 # Pour l'export statique (déjà utilisé par Paquets), et le client du serveur Nuage DB.
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time"] }
 # Client HTTPS du serveur Nuage DB (`NUAGE_URL`, `NUAGE_TOKEN`) : les crates que Nuage utilise
