@@ -88,8 +88,8 @@ Le site réutilise les crates du produit : `stratyx-poker`, `stratyx-strategy` e
 `stratyx-analytics` (qui embarque les modèles de `ai/expresso_3max` et `ai/tournament_6max`).
 
 Le site est un crate autonome, exclu du workspace : l'audit `cargo deny` du produit reste
-inchangé. Paquets y est utilisé sans SQLite ni PostgreSQL (aucune bibliothèque C) : la base
-est en mémoire.
+inchangé. Paquets y est utilisé sans SQLite ni PostgreSQL ; les données du site sont dans
+Nuage DB embarqué (voir « Base de données »).
 
 ## Lancer
 
@@ -127,39 +127,51 @@ site est déployé sur Heroku.
 
 ## Base de données (liste d'attente, messages de contact)
 
-Le serveur garde les inscriptions à la liste d'attente (`Inscrit`) et les messages de contact
-(`Message`) dans la base « Mémoire » de Paquets, choisie par `DATABASE_URL` :
+Le serveur garde les inscriptions à la liste d'attente (table `inscrit`) et les messages de
+contact (table `message`) dans **Nuage DB**, la base de Memoire, en Rust pur, **embarquée
+dans le serveur** (module `base` de `src/main.rs`) : pas de serveur de base à part, pas
+d'abonnement.
 
-| `DATABASE_URL` | Base | Usage |
-|---|---|---|
-| *(absente)* | en mémoire, vidée à chaque arrêt | développement, tests |
-| `postgres://…?sslmode=require` | PostgreSQL, en TLS | production |
+Heroku efface le disque à chaque redémarrage (au moins une fois par jour, et à chaque
+déploiement). Nuage DB s'en accommode : il envoie ses sauvegardes (instantanés et journal,
+chiffrés) vers un **stockage compatible S3** et, quand son dossier est vide au démarrage, il
+s'y **restaure tout seul**. À l'arrêt (`SIGTERM`), le serveur fait un dernier point de
+contrôle et une dernière sauvegarde.
 
-Les tables sont créées au démarrage (`app.model::<…>()`). Sur Heroku, le disque est effacé à
-chaque redémarrage (au moins une fois par jour, et à chaque déploiement) : sans PostgreSQL,
-la liste d'attente et les messages sont perdus.
+| Variable | Rôle |
+|---|---|
+| `NUAGE_ENCRYPTION_KEY` | clé de chiffrement de la base et des sauvegardes (`openssl rand -hex 32`) : **à garder**, sans elle rien ne se relit |
+| `NUAGE_BACKUP_S3_BUCKET`, `NUAGE_BACKUP_S3_ENDPOINT`, `NUAGE_BACKUP_S3_REGION` | le seau S3 et son adresse |
+| `NUAGE_BACKUP_S3_ACCESS_KEY_ID`, `NUAGE_BACKUP_S3_SECRET_ACCESS_KEY` | la clé d'accès au seau |
+| `NUAGE_DATA_DIR` | dossier de travail de la base (`nuage-data` par défaut) |
+| `NUAGE_BACKUP_DIR` | sauvegarde vers un dossier, au lieu de S3 (disque persistant, essais en local) |
 
-**Gratuitement, avec Neon** (PostgreSQL gratuit sans limite de durée, 0,5 Go, sans carte
-bancaire) :
+Sans sauvegarde configurée, la base vit seulement dans `nuage-data` : en local, elle
+persiste ; sur Heroku, elle est perdue au redémarrage (le serveur l'écrit au démarrage).
 
-1. Créer un compte sur [neon.tech](https://neon.tech), puis un projet (région proche de
-   celle de l'app Heroku : `us-east` pour `us`, `eu-central` pour `eu`).
-2. *Connect* → copier la chaîne de connexion
-   (`postgresql://utilisateur:mot-de-passe@ep-….neon.tech/neondb?sslmode=require`).
-3. Dans le dépôt GitHub : *Settings → Secrets and variables → Actions → New repository
-   secret*, nom `DATABASE_URL`, valeur : la chaîne copiée.
-4. Relancer le déploiement (*Actions → Déploiement Heroku → Run workflow*) : il transmet
-   l'adresse à Heroku, et le serveur affiche `database: postgres` au démarrage.
+**Gratuitement, sur Heroku :**
 
-Ne pas ajouter Heroku Postgres (payant) : le secret suffit. La base Neon s'endort après
-quelques minutes sans requête et se réveille à la suivante (moins d'une seconde) ; c'est
-invisible pour un formulaire.
+1. Créer un seau sur un stockage compatible S3 qui a une offre gratuite (par exemple
+   Backblaze B2, 10 Go gratuits au moment d'écrire ces lignes ; vérifier ses conditions),
+   puis une clé d'application limitée à ce seau. Noter le nom du seau, l'adresse S3
+   (`https://s3.<région>.backblazeb2.com` pour B2), la région, l'identifiant et le secret
+   de la clé.
+2. Générer la clé de chiffrement : `openssl rand -hex 32` (et la garder en lieu sûr).
+3. Dans le dépôt GitHub : *Settings → Secrets and variables → Actions*, ajouter les secrets
+   `NUAGE_ENCRYPTION_KEY`, `NUAGE_BACKUP_S3_BUCKET`, `NUAGE_BACKUP_S3_ENDPOINT`,
+   `NUAGE_BACKUP_S3_REGION`, `NUAGE_BACKUP_S3_ACCESS_KEY_ID`,
+   `NUAGE_BACKUP_S3_SECRET_ACCESS_KEY`.
+4. Relancer le déploiement (*Actions → Déploiement Heroku → Run workflow*) : il transmet ces
+   valeurs à Heroku (et retire l'ancien `DATABASE_URL`), et le serveur affiche
+   `base Nuage DB : … (sauvegardes vers …, restaurées au démarrage)`.
 
-Pour essayer en local : `DATABASE_URL='postgres://…' cargo run`.
+Un seul dyno web : deux dynos seraient deux bases écrivant dans les mêmes sauvegardes.
 
-**Dépendances.** Le TLS de PostgreSQL passe par rustls avec `ring` (C et assembleur) : c'est
-une exception propre au serveur du site, hors de l'audit `cargo deny` du produit (règle
-100 % Rust du workspace). Pas de SQLite (bibliothèque C), pas d'autre moteur.
+**Dépendances.** Nuage DB chiffre avec AES et ses sauvegardes S3 passent par rustls avec
+`ring` (C et assembleur) : exception propre au serveur du site, hors de l'audit `cargo deny`
+du produit. Nuage a sa propre version de Memoire, distincte de celle de Paquets : le site
+lui parle en SQL (valeurs toujours en paramètres), et la base de Paquets reste en mémoire,
+inutilisée.
 
 ## Copie statique (GitHub Pages, à la main)
 

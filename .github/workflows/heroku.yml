@@ -7,9 +7,11 @@
 #   - secret   HEROKU_API_KEY   Heroku → Account settings → API Key → Reveal
 #   - variable HEROKU_APP_NAME  le nom de l'app (créée si elle n'existe pas)
 #   - variable facultative HEROKU_REGION : us (par défaut) ou eu
-#   - secret facultatif DATABASE_URL : base PostgreSQL gratuite (Neon), pour que la liste
-#     d'attente et les messages survivent aux redémarrages ; sans lui, base en mémoire
-#     (voir site/README.md, « Base de données »)
+#   - secrets facultatifs NUAGE_ENCRYPTION_KEY et NUAGE_BACKUP_S3_BUCKET, _ENDPOINT, _REGION,
+#     _ACCESS_KEY_ID, _SECRET_ACCESS_KEY : la base Nuage DB du site (liste d'attente,
+#     messages) chiffrée et sauvegardée sur un stockage compatible S3, restaurée à chaque
+#     démarrage ; sans eux, elle est perdue à chaque redémarrage (voir site/README.md,
+#     « Base de données »)
 # Sans eux, le déploiement est sauté (sans erreur).
 
 name: Déploiement Heroku
@@ -34,7 +36,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      NUAGE_ENCRYPTION_KEY: ${{ secrets.NUAGE_ENCRYPTION_KEY }}
+      NUAGE_BACKUP_S3_BUCKET: ${{ secrets.NUAGE_BACKUP_S3_BUCKET }}
+      NUAGE_BACKUP_S3_ENDPOINT: ${{ secrets.NUAGE_BACKUP_S3_ENDPOINT }}
+      NUAGE_BACKUP_S3_REGION: ${{ secrets.NUAGE_BACKUP_S3_REGION }}
+      NUAGE_BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.NUAGE_BACKUP_S3_ACCESS_KEY_ID }}
+      NUAGE_BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.NUAGE_BACKUP_S3_SECRET_ACCESS_KEY }}
       APP: ${{ vars.HEROKU_APP_NAME }}
       REGION: ${{ vars.HEROKU_REGION || 'us' }}
       STACK: heroku-26
@@ -81,14 +88,16 @@ jobs:
           url=$(api "https://api.heroku.com/apps/$APP" | jq -r '.web_url' | sed 's#/$##')
           api -X PATCH "https://api.heroku.com/apps/$APP/config-vars" \
             -d "{\"SITE_URL\":\"$url\"}" > /dev/null
-          # La base PostgreSQL (Neon), si le secret existe. jq échappe l'adresse, qui
-          # contient le mot de passe ; GitHub la masque dans les journaux.
-          if [ -n "${DATABASE_URL:-}" ]; then
-            jq -n --arg u "$DATABASE_URL" '{DATABASE_URL: $u}' \
-              | api -X PATCH "https://api.heroku.com/apps/$APP/config-vars" -d @- > /dev/null
-            echo "Base de données : PostgreSQL (secret DATABASE_URL)."
+          # La base Nuage DB : clé de chiffrement et sauvegardes S3, pour les secrets qui
+          # existent. jq échappe les valeurs ; GitHub les masque dans les journaux. L'ancien
+          # DATABASE_URL (PostgreSQL) n'est plus utilisé : il est retiré (null).
+          vars=$(jq -n '$ENV | with_entries(select((.key | startswith("NUAGE_")) and .value != ""))')
+          jq -n --argjson v "$vars" '$v + {DATABASE_URL: null}' \
+            | api -X PATCH "https://api.heroku.com/apps/$APP/config-vars" -d @- > /dev/null
+          if [ -n "${NUAGE_BACKUP_S3_BUCKET:-}" ]; then
+            echo "Base de données : Nuage DB, sauvegardée sur S3 ($(jq -r 'keys | join(", ")' <<< "$vars"))."
           else
-            echo "::notice::Pas de secret DATABASE_URL : la liste d'attente et les messages restent en mémoire (perdus à chaque redémarrage). Voir site/README.md, « Base de données »."
+            echo "::notice::Pas de secret NUAGE_BACKUP_S3_BUCKET : la base Nuage DB du site est perdue à chaque redémarrage. Voir site/README.md, « Base de données »."
           fi
 
           git archive --format=tar.gz -o "$RUNNER_TEMP/source.tgz" HEAD
