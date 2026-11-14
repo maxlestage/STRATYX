@@ -818,5 +818,23 @@ trois chantiers :
 **Vérifié.** `cargo deny check` : advisories, bans, licences et sources ok. Lint et tests du
 workspace ; lint et tests de `stratyx-database --features nuage` (dont le nouveau test).
 
-**Prochaine étape (b).** Les mains (`put_hand`, `get_hand`, `count_hands`, `hand_summary`)
-dans Nuage, avec un test commun exécuté sur redb et sur Nuage.
+### Étape b, 1re partie : les mains (2026-11-14)
+
+- `nuage_store.rs` : table SQL `main` (une ligne par main : espace, empreinte, date de jeu,
+  date d'enregistrement, main enregistrée et résumé en JSON ; index sur l'espace et
+  l'empreinte), qui remplace à elle seule quatre tables redb (`hands`, `summaries`,
+  `hand_locator`, `fingerprints`). Valeurs toujours en paramètres `?`.
+- Opérations : `put_hand` (insertion, remplacement, doublon d'une autre main, identifiant
+  vide refusé), `get_hand`, `hand_summary`, `find_by_fingerprint`, `delete_hand`,
+  `count_hands`. Les écritures (lecture du doublon puis écriture) sont sérialisées par un
+  verrou ; chaque requête SQL est une transaction.
+- Erreur `DatabaseError::Nuage` (présente seulement avec la fonctionnalité `nuage`).
+
+**Vérifié.** Test `les_mains_se_comportent_comme_avec_redb` : les historiques d'exemple (cash
+et tournoi) enregistrés côte à côte dans redb et dans Nuage, chaque résultat comparé
+(écriture, lecture, résumé, empreinte, comptage par espace, remplacement, doublon,
+suppression). Test de réouverture : les mains relues après fermeture. Lint et tests du
+workspace, `cargo deny check`, lint et tests de `stratyx-database --features nuage`.
+
+**Prochaine étape (b, 2e partie).** Index et recherche (`query.rs` : joueur, session,
+format, statut, date, mains à revoir) dans Nuage, comparés à redb ; puis `revalidate`.
