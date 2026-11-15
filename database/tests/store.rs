@@ -900,7 +900,13 @@ fn revalidation_applies_a_new_review_threshold() {
     let db = Database::open(&file.0)
         .unwrap()
         .with_review_threshold(Confidence::new(0.8).unwrap());
+    let date = |id| db.get_hand(id).unwrap().unwrap().stored_at_ms;
+    let (v1_avant, v2_avant) = (date("v1"), date("v2"));
+    std::thread::sleep(std::time::Duration::from_millis(5));
     assert_eq!(db.revalidate().unwrap(), 1);
+    // Seule la main dont le résumé change est réécrite ; l'autre est laissée telle quelle.
+    assert!(date("v1") > v1_avant);
+    assert_eq!(date("v2"), v2_avant);
     assert_eq!(
         db.hand_summary("v1").unwrap().unwrap().status.review_items,
         0
