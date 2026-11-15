@@ -1473,3 +1473,46 @@ workspace et site.
 
 **Pistes suivantes.** Couleur `--faint` (itération 42) et titres de 5 pages (itération 41),
 laissés au choix de l'utilisateur.
+
+## 2026-11-15 — Itération 45 : première visite, le service worker ne retélécharge plus tout (−42 %)
+
+**CI.** Celle de l'itération 44 (`8060c08`) est verte et fusionnée dans master.
+
+**Démarche.** Bundle WebAssembly construit ici pour la première fois (comme
+`heroku-build.sh` : `wasm-bindgen` 0.2.129), puis site parcouru dans Chromium avec ses îlots :
+15 pages à 1280 et 375 px (défilement complet), les trois exemples de `/app`, quatre
+saisies invalides (vide, bruit, main tronquée, caractères de contrôle), et sur
+`/laboratoire` les exemples et des saisies absurdes de l'équité, de la grille, de l'ICM et
+des jetons. **Aucune exception, aucun `NaN`, aucun débordement** ; chaque saisie invalide
+reçoit un message clair.
+
+**Trouvé.** À l'installation, le service worker demandait chaque fichier de son pré-cache
+avec `cache: "reload"`, qui ignore le cache du navigateur : tout ce que la page venait de
+charger (WebAssembly de 1,2 Mo, son JavaScript, `style.css`, les deux polices) était
+téléchargé une seconde fois, en entier, dès la première visite.
+
+**Fait.** `cache: "no-cache"` : chaque fichier est toujours revalidé auprès du serveur
+(jamais de copie périmée à une mise à jour), mais un fichier inchangé répond 304, sans corps.
+
+**Mesuré** (première visite de l'accueil, Chromium, requêtes lues dans le journal du
+serveur, tailles en Brotli) :
+
+| | Avant | Après |
+|---|---:|---:|
+| octets envoyés par le serveur | 1 302 916 | 756 668 (−42 %) |
+| réponses complètes (200) | 30 | 25 |
+| réponses 304 | 0 | 5 |
+| WebAssembly téléchargé | 2 fois | 1 fois |
+| entrées du cache du worker | 23 | 23 |
+
+Les entrées du cache sont entières (WebAssembly 1 245 732 octets, police 48 256,
+`style.css` 86 506, comme sur le disque) et, réseau coupé, `/laboratoire` se charge et
+calcule une équité.
+
+**Vérifié.** `chaque_page_repond` exige `no-cache` et refuse `reload` dans `sw.js`. Toutes
+les commandes de la CI, workspace et site (tests du site passés avec et sans `pkg/`).
+
+**Pistes suivantes.** La page d'accueil (HTML, sans `etag`) reste demandée deux fois à la
+première visite. Avertissement de Chromium « preload … not used » pour le bundle quand le
+worker est actif : à regarder côté Paquets. Couleur `--faint` et titres de 5 pages : choix
+de l'utilisateur.
