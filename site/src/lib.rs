@@ -5,7 +5,7 @@
 //! dans le navigateur : évaluation des mains, équité, ranges, ICM.
 
 use paquets::prelude::*;
-use stratyx_poker::equity::{EquityOptions, equity};
+use stratyx_poker::equity::{EquityError, EquityOptions, equity};
 use stratyx_poker::eval::best_five;
 use stratyx_poker::icm::icm_equities;
 use stratyx_poker::{Card, CardSet, HandClass, HoleCards, Range, Rank};
@@ -541,7 +541,7 @@ pub fn equite(_props: &str) -> Node {
                             .class(format!("bar b{i}"))
                             .child(
                                 p().class("bar-head")
-                                    .child(strong().text(format!("Joueur {} · {nom}", i + 1)))
+                                    .child(strong().text(nom))
                                     .child(span().class("bar-val").text(pourcent(eq))),
                             )
                             .child(
@@ -576,15 +576,19 @@ pub fn calculer_equite(
     joueurs: &[String],
     board: &str,
 ) -> Result<(Vec<LigneEquite>, String), String> {
+    // Un champ vide est ignoré, mais chaque joueur garde le numéro de son champ (« Joueur 3 »
+    // reste le joueur 3 si le champ 2 est vide), dans les résultats comme dans les messages.
     let mut noms = Vec::new();
+    let mut places = Vec::new();
     let mut ranges = Vec::new();
-    for j in joueurs {
+    for (i, j) in joueurs.iter().enumerate() {
         let j = j.trim();
         if j.is_empty() {
             continue;
         }
-        ranges.push(Range::parse(j).map_err(|e| e.to_string())?);
-        noms.push(j.to_owned());
+        ranges.push(Range::parse(j).map_err(|e| format!("joueur {} : {e}", i + 1))?);
+        noms.push(format!("Joueur {} · {j}", i + 1));
+        places.push(i + 1);
     }
     let board = if board.trim().is_empty() {
         CardSet::EMPTY
@@ -595,7 +599,16 @@ pub fn calculer_equite(
         samples: 80_000,
         ..EquityOptions::default()
     };
-    let r = equity(&ranges, board, CardSet::EMPTY, &options).map_err(|e| e.to_string())?;
+    let r = equity(&ranges, board, CardSet::EMPTY, &options).map_err(|e| match e {
+        EquityError::EmptyRange(i) => format!(
+            "la range du joueur {} est vide une fois retirées les cartes connues",
+            places.get(i).copied().unwrap_or(i + 1)
+        ),
+        EquityError::PlayerCount(n) if n < 2 => {
+            format!("indiquez les mains d'au moins deux joueurs (reçu : {n})")
+        }
+        autre => autre.to_string(),
+    })?;
     let methode = match r.method {
         stratyx_poker::equity::EquityMethod::Exact => "calcul exact",
         stratyx_poker::equity::EquityMethod::MonteCarlo => "Monte-Carlo",
