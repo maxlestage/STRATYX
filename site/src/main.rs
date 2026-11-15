@@ -2815,6 +2815,8 @@ mod tests {
         assert!(manifeste.text().contains("\"share_target\""));
         let sw = client.get("/sw.js").await.text();
         assert!(sw.contains("SKIP_WAITING"));
+        // Le pré-cache revalide chaque fichier sans retélécharger ce que la page a déjà chargé.
+        assert!(sw.contains("cache: \"no-cache\"") && !sw.contains("cache: \"reload\""));
         assert_eq!(client.get("/sitemap.xml").await.status(), 200);
         assert_eq!(client.get("/health").await.status(), 200);
     }
