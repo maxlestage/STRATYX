@@ -41,6 +41,39 @@ fn equite_as_contre_rois() {
     assert!(site::calculer_equite(&["XX".into(), "KK".into()], "").is_err());
 }
 
+/// Chaque joueur garde le numéro de son champ, dans les résultats comme dans les messages.
+#[test]
+fn l_equite_nomme_les_joueurs_comme_a_l_ecran() {
+    let champs = |a: &str, b: &str, c: &str| [a.to_owned(), b.to_owned(), c.to_owned()];
+    // Champ 1 vide : les deux lignes sont celles des joueurs 2 et 3.
+    let (lignes, _) = site::calculer_equite(&champs("", "AsAh", "KsKh"), "").unwrap();
+    assert_eq!(lignes[0].0, "Joueur 2 · AsAh");
+    assert_eq!(lignes[1].0, "Joueur 3 · KsKh");
+    let (lignes, _) = site::calculer_equite(&champs("AsAh", "", "KsKh"), "").unwrap();
+    assert_eq!(lignes[0].0, "Joueur 1 · AsAh");
+    assert_eq!(lignes[1].0, "Joueur 3 · KsKh");
+    for (saisie, board, attendu) in [
+        (
+            champs("AhKh", "AhKh", ""),
+            "AhKh2c",
+            "la range du joueur 1 est vide",
+        ),
+        (
+            champs("QQ", "", "AhKh"),
+            "AhKh2c",
+            "la range du joueur 3 est vide",
+        ),
+        (champs("AA", "ZZ", ""), "", "joueur 2 : "),
+        (champs("", "", "AhAh"), "", "joueur 3 : "),
+        (champs("", "", ""), "", "au moins deux joueurs (reçu : 0)"),
+        (champs("", "AA", ""), "", "au moins deux joueurs (reçu : 1)"),
+    ] {
+        let erreur = site::calculer_equite(&saisie, board).unwrap_err();
+        assert!(erreur.contains(attendu), "{saisie:?} : {erreur}");
+        assert!(!erreur.contains("joueur 0"), "{erreur}");
+    }
+}
+
 #[test]
 fn grille_et_icm() {
     assert_eq!(site::classes_grille().len(), 169);
