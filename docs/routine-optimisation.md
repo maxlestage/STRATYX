@@ -1984,3 +1984,31 @@ s'appelle « salle (filtre non indexé) » (6,5 ms par page, 5 000 mains).
 
 **Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
 itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
+
+## 2026-11-15 — Itération 60 : site et solveurs hors ligne mesurés, rien de rentable (README à jour)
+
+**CI.** Celle de l'itération 59 (`af32f31`) est verte et fusionnée dans master
+(`7bddd50`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Audits sans suite** (pour ne pas les refaire) :
+- Site servi localement : `robots.txt` annonce le plan du site ; le plan liste les 12 pages ;
+  `/nulle-part` répond `404`, et `/merci`, `/hors-ligne` et la page 404 portent
+  `noindex,follow`. L'adresse canonique vient de `SITE_URL`, que le déploiement remplit
+  (`app.json`).
+- Tests du workspace, une fois compilés : 17,6 s (le README annonçait ≈ 25 s ; corrigé en
+  ≈ 20 s). Le binaire de tests le plus long est `stratyx-strategy` (6,7 s), déjà limité par
+  le calcul (≈ 24 s de calcul sur 4 fils) : paralléliser ses tests n'y gagnerait rien.
+- Solveur push/fold à trois (callgrind, `three_max_chip_ev_equilibrium` en release, un fil,
+  56 G instructions) : 30 % pour la table de test des confrontations à trois (tirages
+  aléatoires compris), 18 % dans `ThreeWayEquities::lookup_idx`, appelée trois fois par
+  triplet de classes (une fois par joueur) à la construction du jeu. Ne la calculer qu'une
+  fois gagnerait ≈ 12 %, mais `solve_three_max` et le solveur de river ne servent qu'hors
+  ligne (exemples `pushfold_charts`, `river_convergence`) et aux tests : écarté.
+
+**Fait.** README : durée des tests mise à jour.
+
+**Vérifié.** Toutes les commandes de la CI, workspace et site, plus `cargo doc`.
+
+**Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
+itération 45). Choix laissés à l'utilisateur : itérations 48 et 50 (dont la fréquence de
+la routine : les chemins chauds côté utilisateur sont tous mesurés et optimisés).
