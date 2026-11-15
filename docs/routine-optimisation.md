@@ -2069,3 +2069,30 @@ Contre-épreuve : sur l'ancien code, le test échoue (« +f… » accepté). Tou
 de la CI, workspace et site, plus `cargo doc`.
 
 **Pistes suivantes.** Choix laissés à l'utilisateur : itérations 48, 50 et 61.
+
+## 2026-11-15 — Itération 63 : masquage des captures, le bord d'une zone relative couvre toujours la zone
+
+**CI.** Celle de l'itération 62 (`80ad452`) est verte et fusionnée dans master
+(`65c13e6`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Trouvé** (`RelativeRect::to_pixels`, `security/src/masking.rs` : zones masquées d'une
+capture d'écran, webcam ou chat, données en fractions de l'image). La conversion promet
+d'arrondir **vers l'extérieur** pour couvrir toute la zone, mais le bord droit (et bas)
+était calculé sur la somme `x + largeur` faite en `f32`, qui peut s'arrondir vers le bas.
+Tirage de 12 millions de rectangles (6 largeurs d'écran, de 1 000 à 3 840 px) : **294 cas**
+où le masque s'arrêtait une colonne trop tôt, le bord réel dépassant l'entier de quelques
+millionièmes de pixel (exemple : x = 0,225249, largeur = 0,302876, 1 280 px → bord réel
+676,000004, masque jusqu'à 676 au lieu de 677).
+
+**Fait.** Bords sommés en `f64` (exact pour deux `f32`). La validation (zone dans
+`[0, 1]`) reste en `f32`, comme avant : en `f64`, des zones naturelles comme `x = 0,7,
+largeur = 0,3` dépasseraient 1 d'un cheveu et seraient refusées.
+
+**Mesuré.** 294 cas sur 12 millions avant ; aucun par construction après (le bord est le
+plafond de la somme exacte).
+
+**Vérifié.** Nouveau test `relative_edge_covers_the_exact_sum` (trois cas du tirage, en
+largeur et en hauteur) ; contre-épreuve : sur l'ancien code, il échoue (bord 676 < 676,000004).
+Toutes les commandes de la CI, workspace et site, plus `cargo doc`.
+
+**Pistes suivantes.** Choix laissés à l'utilisateur : itérations 48, 50 et 61.
