@@ -706,7 +706,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--v
 @keyframes breathe { 50% { opacity: 0.55; transform: scale(1.1); } }
 
 .footer-top { display: grid; grid-template-columns: minmax(0, 1fr); gap: 40px; align-items: center; padding: clamp(30px, 4vw, 44px); border-radius: 30px; border: 1px solid var(--line); background: linear-gradient(135deg, rgba(22, 199, 132, 0.14), rgba(255, 255, 255, 0.02) 60%); }
-.newsletter h3 { font-size: clamp(1.5rem, 2.6vw, 2rem); }
+.newsletter h2 { font-size: clamp(1.5rem, 2.6vw, 2rem); letter-spacing: -0.02em; }
 .newsletter-form { display: flex; flex-direction: column; gap: 10px; padding: 6px; border-radius: 22px; border: 1px solid var(--line-2); background: rgba(0, 0, 0, 0.25); max-width: 520px; transition: border-color 0.3s, box-shadow 0.3s; }
 .newsletter-form:focus-within { border-color: var(--violet-2); box-shadow: 0 0 0 4px rgba(22, 199, 132, 0.18); }
 .newsletter-form input { border: 0; background: transparent; padding: 12px 16px; border-radius: 999px; }
@@ -728,7 +728,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--v
 .pulse { position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--mint); }
 .pulse::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--mint); animation: pulse 2s ease-out infinite; }
 @keyframes pulse { to { transform: scale(3.2); opacity: 0; } }
-.footer-col h4 { font: 600 0.8rem/1 var(--font); letter-spacing: 0.16em; text-transform: uppercase; color: var(--faint); margin-bottom: 20px; }
+.footer-col h3 { font: 600 0.8rem/1 var(--font); letter-spacing: 0.16em; text-transform: uppercase; color: var(--faint); margin-bottom: 20px; }
 .footer-col ul { display: grid; gap: 12px; }
 .footer-col a { color: var(--muted); font-size: 0.96rem; }
 .footer-contact address { font-style: normal; display: grid; gap: 12px; color: var(--muted); font-size: 0.94rem; }

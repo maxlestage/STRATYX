@@ -1333,3 +1333,39 @@ ne change pour le serveur) ; le retour après une erreur de saisie pointe sur el
 Toutes les commandes de la CI, workspace et site.
 
 **Pistes suivantes.** `style.css` revalidé à chaque page (itération 35).
+
+## 2026-11-15 — Itération 41 : hiérarchie des titres, pied de page corrigé
+
+**CI.** Celle de l'itération 40 (`c40d862`) est verte et fusionnée dans master.
+
+**Démarche.** Audit d'accessibilité dans Chromium sur les 16 pages (champs, liens et boutons
+sans nom, images sans `alt`, libellés et attributs `aria-*` vers un identifiant absent ou
+non étiquetable, langue, titre, un seul `h1`, ordre des titres). Depuis l'itération 40, plus
+aucun champ, lien, bouton ni libellé en défaut.
+
+**Trouvé.** Neuf pages passaient d'un `h1` à un `h3` sans `h2`. Sur toutes, le pied de page
+(commun) ouvrait par un `h3` (« Soyez parmi les premiers… ») suivi de colonnes en `h4` :
+pour un lecteur d'écran qui navigue par titres, le pied apparaissait comme une sous-partie de
+la dernière section de chaque page.
+
+**Fait.** Pied de page : `h2` pour l'inscription, `h3` pour les quatre colonnes (feuille de
+style ajustée pour un rendu identique).
+
+**Mesuré.**
+
+| | Avant | Après |
+|---|---:|---:|
+| pages avec un saut de niveau de titre (sur 15 pages HTML) | 9 | 5 |
+| rendu de `/`, `/contact`, `/plan-du-site` (captures pleine page, 1280 px) | — | 0 pixel de différence |
+
+La comparaison de captures a servi : un premier essai laissait le titre « Engagements » en
+`h4`, sans style, ce que seul le rendu montrait.
+
+**Vérifié.** Nouveau test `les_titres_ne_sautent_pas_de_niveau` : un seul `h1` par page, pied
+en `h2` puis `h3`, aucun saut sur les pages corrigées. Toutes les commandes de la CI,
+workspace et site.
+
+**Reste (5 pages).** `/fonctionnalites`, `/ia`, `/feuille-de-route`, `/fair-play` et
+`/contact` ont des cartes en `h3` directement sous le `h1` (pas de titre de section) : les
+corriger demande un titre de section ou un changement de niveau visible, donc un choix de
+mise en page. Elles sont listées dans le test (`a_reprendre`).
