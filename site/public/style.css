@@ -965,6 +965,8 @@ code { font: 500 0.88em ui-monospace, SFMono-Regular, Menlo, monospace; color: v
 .age { flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font: 700 0.95rem/1 var(--display); color: var(--coral); border: 2px solid var(--coral); }
 .newsletter-form select { width: 100%; border: 0; background-color: transparent; padding-right: 34px; color: var(--muted); }
 .newsletter-form select:focus { box-shadow: none; }
+/* Le champ et la liste partagent le halo du formulaire : au clavier, la liste montre le sien. */
+.newsletter-form select:focus-visible { outline: 2px solid var(--violet-2); outline-offset: 2px; }
 /* En ligne (dès 641 px), le champ et la liste rétrécissent ; le bouton garde sa taille. */
 .newsletter-form > * { min-width: 0; }
 .newsletter-form .btn { flex: none; }
@@ -1001,9 +1003,11 @@ code { font: 500 0.88em ui-monospace, SFMono-Regular, Menlo, monospace; color: v
   .grid-2, .grid-4, .stats, .row-2, .modules { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
   .footer-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 36px; }
   .footer-brand { grid-column: 1 / -1; }
-  .newsletter-form { flex-direction: row; border-radius: 999px; }
+  .newsletter-form { flex-direction: row; border-radius: 999px; max-width: 580px; }
   .newsletter-form .btn { width: auto; }
-  .newsletter-form select { width: auto; }
+  /* La liste garde la largeur de son texte (elle était coupée : « Joueu ») ; le champ prend le reste. */
+  .newsletter-form select { width: auto; flex: none; }
+  .newsletter-form input { flex: 1 1 0; }
   .footer-bottom { flex-direction: row; align-items: center; }
   .to-top { position: static; }
   .history li { grid-template-columns: 90px minmax(0, 1fr); gap: 20px; }

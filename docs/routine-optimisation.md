@@ -1436,3 +1436,40 @@ ces blocs) ; rendu contrôlé sur capture. Toutes les commandes de la CI, worksp
 
 **Pistes suivantes.** Couleur `--faint` (itération 42) et titres de 5 pages (itération 41),
 laissés au choix de l'utilisateur.
+
+## 2026-11-15 — Itération 44 : formulaire d'inscription, focus de la liste visible et texte entier
+
+**CI.** Celle de l'itération 43 (`daa8dd4`) est verte et fusionnée dans master.
+
+**Démarche.** Audit de la navigation au clavier dans Chromium (touche Tab sur 5 pages à
+1280 px et 2 à 375 px, 398 éléments atteints) : indicateur de focus présent, focus jamais
+dans un bloc caché ni hors de l'écran.
+
+**Trouvé.** Un seul défaut de focus, puis un second vu sur la capture :
+- formulaire d'inscription (pied de chaque page, accueil) : le champ e-mail et la liste des
+  profils n'ont pas d'indicateur propre, seulement le halo commun du formulaire. Dans le
+  champ, le curseur de texte suffit ; sur la liste, rien ne disait qu'elle avait le focus ;
+- à partir de 641 px de large (formulaire en ligne), cette liste était réduite à 98 px
+  pour un texte qui en demande 149 : « Joueur loisir » s'affichait « Joueu », flèche masquée.
+
+**Fait.** La liste montre un contour au focus clavier (`:focus-visible`). En ligne, elle
+garde la largeur de son texte (`flex: none`), le champ e-mail prend le reste, et le
+formulaire peut aller jusqu'à 580 px (520 avant).
+
+**Mesuré** (Chromium) :
+
+| | Avant | Après |
+|---|---:|---:|
+| contour de focus de la liste au clavier | aucun | 2 px |
+| largeur de la liste, formulaire en ligne (besoin : 149 px, 172 pour la plus longue) | 98 px | 173 px |
+| largeur du champ e-mail, en ligne | 218 px | 203 px (139 px à 1024 px) |
+| formulaires qui débordent (24 mesurés, 6 largeurs de 641 à 1440 px, 4 pages) | 0 | 0 |
+
+En colonne (jusqu'à 640 px) rien ne change. Audit mobile de l'itération 43 : toujours 0.
+
+**Vérifié.** Test `la_liste_des_profils_reste_lisible_et_son_focus_visible` (règles
+présentes) ; rendu contrôlé sur captures avant et après. Toutes les commandes de la CI,
+workspace et site.
+
+**Pistes suivantes.** Couleur `--faint` (itération 42) et titres de 5 pages (itération 41),
+laissés au choix de l'utilisateur.

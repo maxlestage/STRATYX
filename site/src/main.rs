@@ -2923,6 +2923,19 @@ mod tests {
         }
     }
 
+    /// Formulaire d'inscription : la liste des profils montre son propre contour de focus au
+    /// clavier (elle partage le halo du formulaire avec le champ e-mail) et garde la largeur
+    /// de son texte quand le formulaire est en ligne.
+    #[test]
+    fn la_liste_des_profils_reste_lisible_et_son_focus_visible() {
+        let css = std::fs::read_to_string("public/style.css").unwrap();
+        assert!(css.contains(
+            ".newsletter-form select:focus-visible { outline: 2px solid var(--violet-2);"
+        ));
+        assert!(css.contains(".newsletter-form select { width: auto; flex: none; }"));
+        assert!(css.contains(".newsletter-form input { flex: 1 1 0; }"));
+    }
+
     /// Les niveaux de titres d'une page, dans l'ordre du document.
     fn niveaux_des_titres(html: &str) -> Vec<u8> {
         html.split("<h")
