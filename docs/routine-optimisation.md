@@ -1369,3 +1369,37 @@ workspace et site.
 `/contact` ont des cartes en `h3` directement sous le `h1` (pas de titre de section) : les
 corriger demande un titre de section ou un changement de niveau visible, donc un choix de
 mise en page. Elles sont listées dans le test (`a_reprendre`).
+
+## 2026-11-15 — Itération 42 : contraste, plus de texte clair sur le vert du site
+
+**CI.** Celle de l'itération 41 (`0d3e82d`) est verte et fusionnée dans master.
+
+**Démarche.** Mesure du contraste des textes dans Chromium (couleur calculée du texte contre
+son fond, seuils WCAG AA : 4,5:1, ou 3:1 pour un grand texte), puis relecture de toutes les
+règles de `style.css` qui peignent le vert du site (`--violet`, #16c784).
+
+**Trouvé.** Sept éléments écrivaient en clair sur ce vert, alors que les boutons et les
+pastilles actives du site y écrivent déjà en sombre (#04140c) :
+- le lien d'évitement « Aller au contenu » (premier élément atteint au clavier) et le
+  bouton rond « Laboratoire » du pied de page : texte blanc, **2,2:1** ;
+- les pictogrammes des réseaux au survol, la flèche « retour en haut » au survol, le signe
+  d'une question ouverte de la FAQ, le numéro d'une étape active, le texte sélectionné :
+  blanc ou presque, environ 2:1 (3:1 demandé pour un pictogramme).
+
+**Fait.** Ces sept règles écrivent en #04140c (le lien d'évitement passe aussi en gras).
+
+**Mesuré.** Contraste sur #16c784 : 2,2:1 (blanc) → 8,6:1 (#04140c), calcul WCAG. Règles à
+fond vert avec un texte ou un pictogramme clair : 7 → 0 (sur 14 règles à fond vert, dont 3
+décors sans contenu). Rendu vérifié sur captures (lien d'évitement, bouton rond, réseau au
+survol, flèche, FAQ).
+
+**Vérifié.** Nouveau test `pas_de_texte_clair_sur_le_vert` : toute règle de `style.css` à
+fond vert fixe la couleur sombre, hors décors listés. Toutes les commandes de la CI,
+workspace et site.
+
+**Limites et pistes.** La mesure automatique ne couvre pas les textes posés sur un dégradé
+ou une image (fond non calculable simplement) : 249 textes mesurés sur 15 pages. La couleur
+`--faint` (#66806f) est à **4,49:1** sur le fond principal et à 3,9:1 sur le fond le plus
+clair (`--bg-3`), juste sous 4,5:1 : elle sert à 18 règles (mentions, libellés, texte
+d'exemple des champs). L'éclaircir est un choix de charte, laissé à l'utilisateur. Titres :
+5 pages à reprendre (itération 41).
