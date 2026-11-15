@@ -202,23 +202,40 @@ impl HandQuery {
             && self.format.is_none_or(|f| f == s.format)
             && self.game_type.is_none_or(|g| g == s.format.game_type)
             && opt_eq(&self.session_id, &s.session_id)
-            && opt_eq(&self.site, &s.site)
             && in_period()
-            && self.hero_result.is_none_or(|r| {
-                s.hero_net.is_some_and(|n| match r {
-                    HeroResult::Won => n > 0,
-                    HeroResult::Lost => n < 0,
-                    HeroResult::BrokeEven => n == 0,
-                })
-            })
+            && self.matches_unindexed(s.site.as_deref(), s.hero_net, s.showdown)
             && self
                 .needs_review
                 .is_none_or(|r| s.status.needs_review() == r)
             && self
                 .validation
                 .is_none_or(|v| s.status.validation.kind() == v)
-            && self.showdown.is_none_or(|v| s.showdown == v)
     }
+
+    /// Les filtres sur des champs du résumé que la base n'indexe pas : salle, résultat du
+    /// héros, abattage.
+    fn matches_unindexed(&self, site: Option<&str>, hero_net: Option<i64>, showdown: bool) -> bool {
+        self.site.as_deref().is_none_or(|f| site == Some(f))
+            && self.hero_result.is_none_or(|r| {
+                hero_net.is_some_and(|n| match r {
+                    HeroResult::Won => n > 0,
+                    HeroResult::Lost => n < 0,
+                    HeroResult::BrokeEven => n == 0,
+                })
+            })
+            && self.showdown.is_none_or(|v| showdown == v)
+    }
+}
+
+/// Les seuls champs d'un résumé lus pour appliquer les filtres non indexés (les autres, joueurs
+/// et statut surtout, ne sont pas désérialisés).
+#[derive(Deserialize)]
+struct Unindexed<'a> {
+    #[serde(default, borrow)]
+    site: Option<std::borrow::Cow<'a, str>>,
+    #[serde(default)]
+    hero_net: Option<i64>,
+    showdown: bool,
 }
 
 /// Début de la clé d'index d'un format : le type de partie.
@@ -345,54 +362,43 @@ impl Database {
         if c.complete {
             self.search_in_base(query, &c)
         } else {
-            self.search_by_scan(query, &c)
+            self.search_filtered(query, &c)
         }
     }
 
     fn search_in_base(&self, query: &HandQuery, c: &Conditions) -> Result<HandPage> {
         let tx = self.read()?;
         // Un seul passage sur les candidats, sans relire leur résumé : identifiant et date.
-        let mut keys = tx
+        let keys = tx
             .rows(&format!("SELECT id, joue_le FROM main{}", c.sql), &c.params)?
             .iter()
             .map(|row| Ok((text_at(row, 0)?, int_at(row, 1)?.map(to_u64).transpose()?)))
             .collect::<Result<Vec<(String, Option<u64>)>>>()?;
-        keys.sort_by(|a, b| by_date_then_id(query.order, (a.1, &a.0), (b.1, &b.0)));
-        let total = keys.len();
-        let page: Vec<String> = keys
-            .into_iter()
-            .skip(query.offset)
-            .take(query.limit.unwrap_or(usize::MAX))
-            .map(|(id, _)| id)
-            .collect();
-        if page.is_empty() {
-            return Ok(HandPage {
-                total,
-                items: Vec::new(),
-            });
-        }
-        // Puis les résumés de la page seulement, remis dans l'ordre du tri.
-        let marks = vec!["?"; page.len()].join(", ");
-        let params: Vec<serde_json::Value> = page.iter().map(|id| id.as_str().into()).collect();
-        let mut summaries: std::collections::HashMap<String, HandSummary> = tx
-            .rows(
-                &format!("SELECT id, resume FROM main WHERE id IN ({marks})"),
-                &params,
-            )?
-            .iter()
-            .map(|row| Ok((text_at(row, 0)?, from_json(text_at(row, 1)?.as_bytes())?)))
-            .collect::<Result<_>>()?;
-        let items = page
-            .iter()
-            .map(|id| {
-                summaries
-                    .remove(id)
-                    .ok_or_else(|| DatabaseError::Corrupted(format!("résumé de « {id} » absent")))
-            })
-            .collect::<Result<Vec<_>>>()?;
-        Ok(HandPage { total, items })
+        page_of(&tx, query, keys)
     }
 
+    /// Filtres non indexés (salle, résultat, abattage) : les conditions indexées sont
+    /// appliquées par la base, puis seuls trois champs de chaque résumé candidat sont lus ; le
+    /// tri et la page se font sur l'identifiant et la date, comme [`Self::search_in_base`].
+    fn search_filtered(&self, query: &HandQuery, c: &Conditions) -> Result<HandPage> {
+        let tx = self.read()?;
+        let mut keys = Vec::new();
+        for row in tx.rows(
+            &format!("SELECT id, joue_le, resume FROM main{}", c.sql),
+            &c.params,
+        )? {
+            let resume = text_at(&row, 2)?;
+            let u: Unindexed<'_> = serde_json::from_str(&resume)?;
+            if query.matches_unindexed(u.site.as_deref(), u.hero_net, u.showdown) {
+                keys.push((text_at(&row, 0)?, int_at(&row, 1)?.map(to_u64).transpose()?));
+            }
+        }
+        page_of(&tx, query, keys)
+    }
+
+    /// Référence des tests : chaque résumé candidat est lu en entier et passé à
+    /// [`HandQuery::matches`].
+    #[cfg(test)]
     fn search_by_scan(&self, query: &HandQuery, c: &Conditions) -> Result<HandPage> {
         let mut items = Vec::new();
         let sql = format!("SELECT resume FROM main{}", c.sql);
@@ -417,6 +423,49 @@ impl Database {
             .collect();
         Ok(HandPage { total, items })
     }
+}
+
+/// Trie les candidats (identifiant, date), garde la page demandée et relit seulement ses
+/// résumés, remis dans l'ordre du tri.
+fn page_of(
+    tx: &crate::sql::Tx<'_>,
+    query: &HandQuery,
+    mut keys: Vec<(String, Option<u64>)>,
+) -> Result<HandPage> {
+    keys.sort_by(|a, b| by_date_then_id(query.order, (a.1, &a.0), (b.1, &b.0)));
+    let total = keys.len();
+    let page: Vec<String> = keys
+        .into_iter()
+        .skip(query.offset)
+        .take(query.limit.unwrap_or(usize::MAX))
+        .map(|(id, _)| id)
+        .collect();
+    if page.is_empty() {
+        return Ok(HandPage {
+            total,
+            items: Vec::new(),
+        });
+    }
+    // Puis les résumés de la page seulement, remis dans l'ordre du tri.
+    let marks = vec!["?"; page.len()].join(", ");
+    let params: Vec<serde_json::Value> = page.iter().map(|id| id.as_str().into()).collect();
+    let mut summaries: std::collections::HashMap<String, HandSummary> = tx
+        .rows(
+            &format!("SELECT id, resume FROM main WHERE id IN ({marks})"),
+            &params,
+        )?
+        .iter()
+        .map(|row| Ok((text_at(row, 0)?, from_json(text_at(row, 1)?.as_bytes())?)))
+        .collect::<Result<_>>()?;
+    let items = page
+        .iter()
+        .map(|id| {
+            summaries
+                .remove(id)
+                .ok_or_else(|| DatabaseError::Corrupted(format!("résumé de « {id} » absent")))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(HandPage { total, items })
 }
 
 #[cfg(test)]
@@ -498,6 +547,31 @@ mod tests {
             let scan = db.search_by_scan(q, &c).unwrap();
             assert_eq!(fast, scan, "{q:?}");
         }
+        // Filtres non indexés (salle, résultat du héros, abattage), seuls ou avec des filtres
+        // indexés : la lecture de trois champs donne le résultat du parcours complet.
+        let site = db.search(&HandQuery::new()).unwrap().items[0]
+            .site
+            .clone()
+            .unwrap();
+        let mut filtered = 0;
+        for base in &queries {
+            for q in [
+                base.clone().site(site.clone()),
+                base.clone().site("Winamax"),
+                base.clone().hero_result(HeroResult::Won),
+                base.clone().hero_result(HeroResult::Lost),
+                base.clone().hero_result(HeroResult::BrokeEven),
+                base.clone().showdown(true),
+                base.clone().showdown(false).site(site.clone()),
+            ] {
+                let c = Conditions::of(&q);
+                assert!(!c.complete);
+                let page = db.search_filtered(&q, &c).unwrap();
+                assert_eq!(page, db.search_by_scan(&q, &c).unwrap(), "{q:?}");
+                filtered += page.total;
+            }
+        }
+        assert!(filtered > 0);
         assert!(db.search(&HandQuery::new()).unwrap().total == hands.len());
     }
 }
