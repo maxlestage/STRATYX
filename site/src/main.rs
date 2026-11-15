@@ -762,11 +762,16 @@ fn curseur() -> Element {
         .child(div().class("cursor-ring"))
 }
 
-fn logo() -> Element {
+/// Le logo, lien vers l'accueil. `ou` distingue ses exemplaires dans la page (en-tête, pied) :
+/// le dégradé du dessin porte un identifiant, qui doit rester unique dans le document.
+fn logo(ou: &str) -> Element {
+    let dessin = icone("logo")
+        .replace("id=\"lg\"", &format!("id=\"lg-{ou}\""))
+        .replace("url(#lg)", &format!("url(#lg-{ou})"));
     a().class("logo")
         .href("/")
         .attr("aria-label", "STRATYX, accueil")
-        .child(span().class("logo-mark").html(icone("logo")))
+        .child(span().class("logo-mark").html(dessin))
         .child(span().class("logo-text").text("STRATYX"))
 }
 
@@ -786,7 +791,7 @@ fn entete(chemin: &str) -> Element {
         .child(
             div()
                 .class("nav-shell")
-                .child(logo())
+                .child(logo("entete"))
                 .child(
                     nav()
                         .class("nav")
@@ -944,7 +949,7 @@ fn pied_de_page() -> Element {
                 .child(
                     div()
                         .class("footer-brand")
-                        .child(logo())
+                        .child(logo("pied"))
                         .child(p().class("muted").text(
                             "La plateforme d'analyse de Texas Hold'em, écrite entièrement en Rust : capture, retranscription, analyse stratégique, profils et coaching.",
                         ))
@@ -2024,10 +2029,11 @@ async fn contact(req: Request) -> Page {
         .child(
             div()
                 .class("field")
-                .child(label().attr("for", "contenu").text("Message"))
+                .child(label().attr("for", "message").text("Message"))
                 .child(
+                    // `contenu` est déjà l'identifiant de `<main>` (lien « Aller au contenu »).
                     textarea()
-                        .id("contenu")
+                        .id("message")
                         .attr("name", "contenu")
                         .attr("rows", "6")
                         .attr("minlength", "20")
@@ -2157,7 +2163,7 @@ async fn envoyer_contact(req: Request) -> Result<Redirect> {
         return Ok(Redirect::see_other("/merci?type=contact"));
     }
     if f.nom.trim().is_empty() || !email_valide(&f.email) || f.contenu.trim().chars().count() < 20 {
-        return Ok(Redirect::see_other("/contact?erreur=1#contenu"));
+        return Ok(Redirect::see_other("/contact?erreur=1#message"));
     }
     if let Err(e) = base::enregistrer_message(
         &borne(&f.nom, 200),
@@ -2169,7 +2175,7 @@ async fn envoyer_contact(req: Request) -> Result<Redirect> {
     .await
     {
         eprintln!("contact : message non enregistré ({e})");
-        return Ok(Redirect::see_other("/contact?erreur=2#contenu"));
+        return Ok(Redirect::see_other("/contact?erreur=2#message"));
     }
     Ok(Redirect::see_other("/merci?type=contact"))
 }
@@ -2719,7 +2725,7 @@ mod tests {
         }
         // Contact : nom vide, adresse invalide, message trop court, champ piège, autre site.
         let long = "Un message assez long pour la validation.";
-        let erreur = Some("/contact?erreur=1#contenu");
+        let erreur = Some("/contact?erreur=1#message");
         for (nom, email, contenu, piege, origine, attendu) in [
             ("  ", autre.as_str(), long, "", "same-origin", erreur),
             ("Ada", "ada@exemple", long, "", "same-origin", erreur),
@@ -2775,6 +2781,31 @@ mod tests {
             assert!(html.contains("manifest.webmanifest"), "{chemin}");
             assert!(html.contains("apple-mobile-web-app-capable"), "{chemin}");
             assert!(html.contains("toast-maj"), "{chemin}");
+        }
+        // Un identifiant ne sert qu'une fois par page (ancres, libellés, dégradés des dessins).
+        for chemin in PAGES.iter().map(|(c, _)| *c).chain([
+            "/app",
+            "/hors-ligne",
+            "/nulle-part",
+            "/merci?type=liste",
+        ]) {
+            let html = client.get(chemin).await.text();
+            let mut vus = std::collections::BTreeSet::new();
+            let doubles: Vec<&str> = html
+                .split(" id=\"")
+                .skip(1)
+                .filter_map(|suite| suite.split('"').next())
+                .filter(|id| !vus.insert(*id))
+                .collect();
+            assert!(
+                doubles.is_empty(),
+                "{chemin} : identifiants en double {doubles:?}"
+            );
+            assert!(vus.len() >= 3, "{chemin} : {} identifiants", vus.len());
+            assert!(
+                html.contains("url(#lg-entete)") && html.contains("url(#lg-pied)"),
+                "{chemin}"
+            );
         }
         assert_eq!(client.get("/nulle-part").await.status(), 404);
         assert_eq!(client.get("/manifest.webmanifest").await.status(), 200);
