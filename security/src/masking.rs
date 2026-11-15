@@ -122,8 +122,14 @@ impl RelativeRect {
         let (w, h) = (f64::from(width), f64::from(height));
         let x0 = (f64::from(self.x) * w).floor();
         let y0 = (f64::from(self.y) * h).floor();
-        let x1 = (f64::from(self.x + self.width) * w).ceil().min(w);
-        let y1 = (f64::from(self.y + self.height) * h).ceil().min(h);
+        // Bord droit et bord bas sommés en `f64` (exact pour deux `f32`) : la somme en `f32`
+        // peut s'arrondir vers le bas et laisser la dernière colonne ou ligne découverte.
+        let x1 = ((f64::from(self.x) + f64::from(self.width)) * w)
+            .ceil()
+            .min(w);
+        let y1 = ((f64::from(self.y) + f64::from(self.height)) * h)
+            .ceil()
+            .min(h);
         // Valeurs entières dans [0, dimension] : conversions exactes.
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let px = |v: f64| v as u32;
@@ -460,6 +466,37 @@ mod tests {
         ));
         assert!(err.to_string().contains("16"));
         assert!(apply_masks(&mut [], 0, 0, &[], RED).is_ok());
+    }
+
+    /// Le bord droit (et bas) couvre le bord réel `(x + largeur) × dimension` même quand la
+    /// somme en `f32` s'arrondit vers le bas (cas trouvés par tirage : le bord réel dépasse
+    /// l'entier de quelques millionièmes de pixel).
+    #[test]
+    fn relative_edge_covers_the_exact_sum() {
+        for (x, width, dim) in [
+            (0.225_249_f32, 0.302_876_f32, 1280_u32),
+            (0.344_886, 0.051_989, 1280),
+            (0.345_18, 0.226_695, 1280),
+        ] {
+            let exact = (f64::from(x) + f64::from(width)) * f64::from(dim);
+            // L'ancien calcul (somme en `f32`) s'arrêtait une colonne trop tôt.
+            assert!((f64::from(x + width) * f64::from(dim)).ceil() < exact.ceil());
+            let rect = RelativeRect {
+                x,
+                y: x,
+                width,
+                height: width,
+            };
+            let px = rect.to_pixels(dim, dim).unwrap();
+            assert!(
+                f64::from(px.x + px.width) >= exact,
+                "{x} {width} : {px:?} < {exact}"
+            );
+            assert!(
+                f64::from(px.y + px.height) >= exact,
+                "{x} {width} : {px:?} < {exact}"
+            );
+        }
     }
 
     #[test]
