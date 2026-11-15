@@ -913,3 +913,34 @@ fn revalidation_applies_a_new_review_threshold() {
     );
     assert_eq!(db.count_hands(None).unwrap(), 2);
 }
+
+/// Une mesure non finie (`NaN`, infini) s'écrirait `null` en JSON et rendrait illisible toute
+/// la progression de l'utilisateur : elle est refusée, et la progression reste intacte.
+#[test]
+fn progression_valeur_non_finie_refusee() {
+    let db = Database::in_memory().unwrap();
+    db.put_user(&UserProfile::new("u1", "Max", 0)).unwrap();
+    let entry = |at_ms, value| ProgressEntry {
+        at_ms,
+        topic: "pushfold".into(),
+        metric: "score".into(),
+        value,
+        details: None,
+    };
+    db.add_progress("u1", entry(1, 0.5)).unwrap();
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert!(
+            matches!(
+                db.add_progress("u1", entry(2, value)),
+                Err(DatabaseError::InvalidValue(_))
+            ),
+            "{value}"
+        );
+    }
+    db.add_progress("u1", entry(3, -1.0)).unwrap();
+    let progress = db.progress("u1").unwrap();
+    assert_eq!(
+        progress.iter().map(|e| e.value).collect::<Vec<_>>(),
+        [0.5, -1.0]
+    );
+}
