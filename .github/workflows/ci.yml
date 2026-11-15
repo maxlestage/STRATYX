@@ -30,6 +30,11 @@ jobs:
         run: cargo fmt --all --check
       - name: Lint
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Documentation (liens internes valides)
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
       - name: Tests
         if: matrix.os != 'ubuntu-latest'
         run: cargo test --workspace
