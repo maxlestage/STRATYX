@@ -42,6 +42,9 @@ pub enum DatabaseError {
     /// Utilisateur inconnu.
     #[error("utilisateur inconnu : « {0} »")]
     UnknownUser(String),
+    /// Valeur refusée avant l'écriture (nombre non fini : JSON ne sait pas l'écrire).
+    #[error("valeur refusée : {0}")]
+    InvalidValue(String),
 }
 
 /// Raccourci pour les résultats de ce crate.
