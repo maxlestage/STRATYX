@@ -2877,6 +2877,38 @@ mod tests {
         }
     }
 
+    /// Sur le vert du site (`--violet`, #16c784), un texte ou un pictogramme clair n'a qu'un
+    /// contraste de 2:1 environ (4,5:1 demandé pour un texte, 3:1 pour un pictogramme) : toute
+    /// règle qui peint ce fond écrit en sombre (#04140c, 8,6:1), sauf les simples pastilles.
+    #[test]
+    fn pas_de_texte_clair_sur_le_vert() {
+        let css = std::fs::read_to_string("public/style.css").unwrap();
+        // Décors sans texte ni pictogramme (puces, sphère de la page des IA).
+        let pastilles = [
+            ".history li::before",
+            ".toast-dot",
+            ".ia-orb span:nth-child(3)",
+        ];
+        let mut sur_vert = 0;
+        for regle in css.split('}') {
+            let Some((selecteur, corps)) = regle.split_once('{') else {
+                continue;
+            };
+            let selecteur = selecteur.trim();
+            let fond_vert = corps.contains("background: var(--violet)")
+                || corps.contains("background: radial-gradient(circle at 35% 30%, #8ff0c4");
+            if !fond_vert || pastilles.contains(&selecteur) {
+                continue;
+            }
+            sur_vert += 1;
+            assert!(
+                corps.contains(" color: #04140c;"),
+                "couleur du texte sur fond vert : {selecteur}"
+            );
+        }
+        assert!(sur_vert >= 10, "{sur_vert} règles à fond vert");
+    }
+
     /// Les niveaux de titres d'une page, dans l'ordre du document.
     fn niveaux_des_titres(html: &str) -> Vec<u8> {
         html.split("<h")
