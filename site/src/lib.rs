@@ -731,6 +731,9 @@ pub fn grille(_props: &str) -> Node {
         .into()
 }
 
+/// Plus grand paiement accepté par le calculateur ICM.
+const PAIEMENT_MAX: f64 = 1e12;
+
 /// Le calcul ICM : tapis et structure de paiement → équité en argent de chaque joueur.
 pub fn calculer_icm(tapis: &str, paiements: &str) -> Result<Vec<(u64, f64)>, String> {
     let tapis: Vec<u64> = tapis
@@ -738,8 +741,12 @@ pub fn calculer_icm(tapis: &str, paiements: &str) -> Result<Vec<(u64, f64)>, Str
         .map(|t| t.trim().replace([' ', '\u{202f}'], ""))
         .filter(|t| !t.is_empty())
         .map(|t| {
-            t.parse::<u64>()
-                .map_err(|_| format!("tapis illisible : {t}"))
+            t.parse::<u64>().map_err(|_| {
+                format!(
+                    "tapis illisible : {}",
+                    t.chars().take(20).collect::<String>()
+                )
+            })
         })
         .collect::<Result<_, _>>()?;
     let paiements: Vec<f64> = paiements
@@ -747,12 +754,33 @@ pub fn calculer_icm(tapis: &str, paiements: &str) -> Result<Vec<(u64, f64)>, Str
         .map(|t| t.trim().replace(',', "."))
         .filter(|t| !t.is_empty())
         .map(|t| {
-            t.parse::<f64>()
-                .map_err(|_| format!("paiement illisible : {t}"))
+            // Le texte saisi, abrégé : un message d'erreur reste court.
+            let court: String = t.chars().take(20).collect();
+            let p = t
+                .parse::<f64>()
+                .map_err(|_| format!("paiement illisible : {court}"))?;
+            // `parse::<f64>` lit aussi « inf », « nan » et des puissances démesurées : un
+            // paiement est un montant ordinaire.
+            if p.is_finite() && (0.0..=PAIEMENT_MAX).contains(&p) {
+                Ok(p)
+            } else {
+                Err(format!(
+                    "paiement invalide : {court} (un nombre entre 0 et mille milliards est attendu)"
+                ))
+            }
         })
         .collect::<Result<_, _>>()?;
     if tapis.len() > 9 {
         return Err("9 joueurs au plus dans cette démo".into());
+    }
+    // Les joueurs sont numérotés comme à l'écran (J1, J2…).
+    if let Some(i) = tapis.iter().position(|t| *t == 0) {
+        return Err(format!("le joueur {} a un tapis nul", i + 1));
+    }
+    if !tapis.is_empty() && !paiements.iter().any(|p| *p > 0.0) {
+        return Err(
+            "indiquez au moins un paiement supérieur à zéro, par exemple « 50, 30, 20 »".into(),
+        );
     }
     let chips: Vec<Chips> = tapis.iter().map(|t| Chips(*t)).collect();
     let eq = icm_equities(&chips, &paiements).map_err(|e| e.to_string())?;
