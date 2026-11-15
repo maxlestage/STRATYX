@@ -236,12 +236,15 @@ impl TryFrom<String> for TokenDigest {
 
     fn try_from(hex: String) -> Result<Self, Self::Error> {
         let invalid = || AuthError::InvalidStoredHash("empreinte de jeton invalide".into());
-        if hex.len() != 64 || !hex.is_ascii() {
+        if hex.len() != 64 {
             return Err(invalid());
         }
+        // Chiffre par chiffre : `u8::from_str_radix` accepterait un signe (« +f » vaut 15).
+        let nibble = |c: u8| char::from(c).to_digit(16).ok_or_else(invalid);
         let mut out = [0u8; 32];
-        for (i, byte) in out.iter_mut().enumerate() {
-            *byte = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).map_err(|_| invalid())?;
+        for (byte, pair) in out.iter_mut().zip(hex.as_bytes().as_chunks::<2>().0) {
+            *byte =
+                u8::try_from(nibble(pair[0])? << 4 | nibble(pair[1])?).map_err(|_| invalid())?;
         }
         Ok(Self(out))
     }
@@ -431,6 +434,26 @@ mod tests {
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
         assert!(serde_json::from_str::<TokenDigest>("\"zz\"").is_err());
+    }
+
+    /// Une empreinte stockée se relit telle qu'écrite : 64 chiffres hexadécimaux, sans signe
+    /// (`u8::from_str_radix` lisait « +f » comme 15) ni caractère non ASCII.
+    #[test]
+    fn token_digest_strict_hex() {
+        let digest = TokenDigest::of("abc");
+        let hex = digest.to_string();
+        assert_eq!(TokenDigest::try_from(hex.clone()).unwrap(), digest);
+        assert_eq!(TokenDigest::try_from(hex.to_uppercase()).unwrap(), digest);
+        for bad in [
+            "+f".repeat(32),
+            format!("+{}", &hex[1..]),
+            format!("{}-1", &hex[..62]),
+            format!("é{}", &hex[2..]),
+            format!("{hex}0"),
+            hex[..62].to_owned(),
+        ] {
+            assert!(TokenDigest::try_from(bad.clone()).is_err(), "{bad}");
+        }
     }
 
     #[test]
