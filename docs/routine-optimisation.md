@@ -1516,3 +1516,40 @@ les commandes de la CI, workspace et site (tests du site passés avec et sans `p
 première visite. Avertissement de Chromium « preload … not used » pour le bundle quand le
 worker est actif : à regarder côté Paquets. Couleur `--faint` et titres de 5 pages : choix
 de l'utilisateur.
+
+## 2026-11-15 — Itération 46 : calculateur ICM du laboratoire, saisies absurdes refusées clairement
+
+**CI.** Celle de l'itération 45 (`7fb17da`) est verte et fusionnée dans master.
+
+**Démarche.** Lecture, dans Chromium et avec le WebAssembly, de ce qu'affichent le
+calculateur ICM et la grille des ranges pour quinze saisies limites chacun (l'itération 45
+n'avait vérifié que l'absence d'erreur, pas le texte affiché).
+
+**Trouvé** (`calculer_icm`, `site/src/lib.rs`) :
+- paiements vides ou tous nuls : le tableau s'affichait avec « -0,00 » et « -50,0 pt » pour
+  chaque joueur, sans dire qu'il manquait les paiements ;
+- `1e308, 1e308` (ou `inf`, `nan`, acceptés par `parse::<f64>`) : une valeur de plus de
+  300 chiffres, ou `NaN`, à l'écran ;
+- messages qui numérotaient les joueurs à partir de 0 (« le joueur 0 a un tapis nul ») alors
+  que l'écran les nomme J1, J2… ;
+- un tapis illisible était recopié en entier dans le message, quelle que soit sa longueur.
+
+**Fait.** Avant le calcul : un paiement doit être un nombre fini entre 0 et mille
+milliards ; il en faut au moins un supérieur à zéro ; un tapis nul est signalé avec le
+numéro affiché du joueur ; le texte recopié dans un message est limité à 20 caractères. Le
+moteur (`stratyx-poker`) n'est pas modifié.
+
+**Mesuré.** Les 13 saisies absurdes du test sont refusées avec un message de moins de
+120 caractères. Observé avant, dans le navigateur : tableau faux pour des paiements vides
+ou nuls, valeur de plus de 300 chiffres pour `1e308`, « joueur 0 » pour un tapis nul (`inf`
+et `nan` n'ont pas été essayés avant le correctif). Les 6 saisies sensées du test (montants,
+espaces, plus de prix que de joueurs) restent acceptées. Après, à 375 px : messages
+affichés, pas de débordement, aucune exception.
+
+**Vérifié.** Test `l_icm_refuse_les_saisies_absurdes` (`site/tests/iles.rs`) ; bundle
+reconstruit et relu dans Chromium. Toutes les commandes de la CI, workspace et site.
+
+**Pistes suivantes.** Même numérotation à partir de 0 dans un message du calculateur
+d'équité (« la range du joueur 0 est vide… ») : le texte vient du moteur, partagé avec la
+CLI ; à décider. La grille des ranges n'affiche aucun message pour une saisie invalide
+(`ZZ+`) : à vérifier. Couleur `--faint`, titres de 5 pages : choix de l'utilisateur.

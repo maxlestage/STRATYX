@@ -52,3 +52,51 @@ fn grille_et_icm() {
     assert!((total - 100.0).abs() < 1e-6);
     assert!(icm[0].1 < 50.0 && icm[0].1 > icm[1].1);
 }
+
+/// Le calculateur ICM refuse ce qui n'a pas de sens, avec un message qui dit quoi corriger et
+/// qui numérote les joueurs comme à l'écran (J1, J2…).
+#[test]
+fn l_icm_refuse_les_saisies_absurdes() {
+    for (tapis, paiements, attendu) in [
+        ("5000,3000,2000", "", "au moins un paiement"),
+        ("1000,1000", "0,0", "au moins un paiement"),
+        ("1,1", "1e308,1e308", "paiement invalide"),
+        ("1,1", "inf", "paiement invalide"),
+        ("1,1", "nan", "paiement invalide"),
+        ("1000,1000", "100,-50", "paiement invalide"),
+        ("1000,1000", "1000000000001", "paiement invalide"),
+        ("5000,0,2000", "50,30,20", "le joueur 2 a un tapis nul"),
+        ("0,0,0", "50,30,20", "le joueur 1 a un tapis nul"),
+        ("abc", "50", "tapis illisible"),
+        (
+            "99999999999999999999999999999999999999999999999999999999999999",
+            "50",
+            "tapis illisible",
+        ),
+        ("1000", "def", "paiement illisible"),
+        ("1,2,3,4,5,6,7,8,9,10", "50", "9 joueurs au plus"),
+    ] {
+        let erreur = site::calculer_icm(tapis, paiements).unwrap_err();
+        assert!(erreur.contains(attendu), "{tapis} / {paiements} : {erreur}");
+        assert!(erreur.chars().count() < 120, "{erreur}");
+    }
+    // Ce qui a un sens reste accepté : montants, espaces, plus de prix que de joueurs.
+    for (tapis, paiements) in [
+        ("5000,3000,2000", "50,30,20"),
+        ("5 000, 3 000", "60,40"),
+        ("5000,3000", "60,40,20,10"),
+        ("1000", "100"),
+        ("1500,1500,1500", "1000000000000, 0"),
+        ("10,20", "0, 0.5"),
+    ] {
+        let lignes = site::calculer_icm(tapis, paiements).unwrap();
+        assert!(
+            lignes.iter().all(|l| l.1.is_finite() && l.1 >= 0.0),
+            "{tapis} / {paiements}"
+        );
+        assert!(
+            lignes.iter().map(|l| l.1).sum::<f64>() > 0.0,
+            "{tapis} / {paiements}"
+        );
+    }
+}
