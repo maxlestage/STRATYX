@@ -1753,3 +1753,33 @@ aussi, workspace et site.
 
 **Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
 itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
+
+## 2026-11-15 — Itération 53 : descriptions des pages, ni coupées ni trop courtes
+
+**CI.** Celle de l'itération 52 (`3f4b7c1`) est verte, y compris la nouvelle étape
+`cargo doc`, et fusionnée dans master (`e3c6ec8`). La production répond toujours `503`
+(quota Eco, itération 50).
+
+**Audit** (12 pages du plan du site, servies localement). Chaque page a un titre propre,
+une adresse canonique et ses balises Open Graph. Quatre descriptions (`<meta
+name="description">`) sortaient de la plage de 50 à 160 caractères que les moteurs de
+recherche affichent sans les couper :
+
+| Page | Avant | Après |
+|---|---:|---:|
+| `/` | 162 | 149 |
+| `/app` | 199 | 157 |
+| `/mentions-legales` | 49 | 87 |
+| `/plan-du-site` | 33 | 132 |
+
+**Fait.** Les quatre textes sont réécrits sans changer ce qu'ils disent (accueil :
+« spécialisées » retiré ; `/app` : « ses IA » au lieu des deux noms, cités dans la page ;
+mentions et plan : contenu de la page nommé).
+
+**Vérifié.** Nouveau test `descriptions_des_pages` : chaque page du plan a une
+description de 50 à 160 caractères (entités décodées), toutes différentes. Il échouait
+avant le changement (`/`, 162 caractères). Toutes les commandes de la CI, workspace et
+site, plus `cargo doc` (itération 52).
+
+**Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
+itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
