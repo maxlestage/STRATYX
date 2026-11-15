@@ -1725,3 +1725,31 @@ l'export statique et le lint WebAssembly).
 
 **Pistes suivantes.** Avertissement « preload … not used » du bundle quand le worker est
 actif (côté Paquets, itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
+
+## 2026-11-15 — Itération 52 : documentation sans avertissement, vérifiée par la CI
+
+**CI.** Celle de l'itération 51 (`a7e2f0a`) est verte et fusionnée dans master
+(`adabf7a`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Écarté, mesuré.** Mettre les pages en cache côté serveur (`middleware::cache`) : en
+`--release`, une page se rend en 0,7 à 2 ms (`/`, `/app`, `/laboratoire`,
+`/fonctionnalites`, `/contact`, 6 requêtes chacune) ; l'`ETag` de l'itération 51 évite
+déjà le transfert. Gain négligeable, statu quo.
+
+**Trouvé.** `cargo doc --workspace --no-deps` signalait un lien ambigu dans
+`strategy/src/lib.rs` : `` [`reference`] `` désigne à la fois le module et la fonction
+réexportée ; rustdoc ne savait pas lequel ouvrir. Rien ne vérifiait la documentation dans
+la CI. Le site (`site/`) n'a aucun avertissement.
+
+**Fait.** Le lien vise le module (`mod@reference`). Nouvelle étape de la CI (Ubuntu
+seulement) : `cargo doc --workspace --no-deps` avec `RUSTDOCFLAGS=-D warnings`, pour qu'un
+lien cassé ou ambigu bloque la fusion.
+
+**Mesuré.** Avertissements de rustdoc dans le workspace : 1 → 0. Coût de l'étape : 13 s
+sans cache (4 cœurs), 4 s avec le cache de compilation.
+
+**Vérifié.** La commande de la nouvelle étape passe ; toutes les autres commandes de la CI
+aussi, workspace et site.
+
+**Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
+itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
