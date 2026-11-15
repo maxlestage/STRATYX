@@ -899,7 +899,7 @@ fn formulaire_liste() -> Element {
 
 fn pied_de_page() -> Element {
     let colonne = |titre: &'static str, liens: &'static [(&'static str, &'static str)]| {
-        div().class("footer-col").child(h4().text(titre)).child(
+        div().class("footer-col").child(h3().text(titre)).child(
             ul().children(
                 liens
                     .iter()
@@ -920,7 +920,7 @@ fn pied_de_page() -> Element {
                         .class("newsletter")
                         .id("liste-attente")
                         .child(span().class("eyebrow").text("Accès anticipé"))
-                        .child(h3().text("Soyez parmi les premiers à analyser vos mains."))
+                        .child(h2().text("Soyez parmi les premiers à analyser vos mains."))
                         .child(p().class("muted").text(
                             "Un e-mail à l'ouverture de chaque étape, et une invitation à l'accès anticipé. Rien d'autre.",
                         ))
@@ -976,7 +976,7 @@ fn pied_de_page() -> Element {
                 .child(
                     div()
                         .class("footer-col footer-contact")
-                        .child(h4().text("Engagements"))
+                        .child(h3().text("Engagements"))
                         .child(
                             address()
                                 .child(p().child(span().class("ico").html(icone("bouclier"))).child(span().text("Aucune assistance en direct")))
@@ -2875,6 +2875,59 @@ mod tests {
                 "{police}"
             );
         }
+    }
+
+    /// Les niveaux de titres d'une page, dans l'ordre du document.
+    fn niveaux_des_titres(html: &str) -> Vec<u8> {
+        html.split("<h")
+            .skip(1)
+            .filter_map(|suite| {
+                let mut c = suite.bytes();
+                let niveau = c.next().filter(|n| (b'1'..=b'6').contains(n))?;
+                matches!(c.next(), Some(b' ' | b'>')).then_some(niveau - b'0')
+            })
+            .collect()
+    }
+
+    /// La hiérarchie des titres ne saute pas de niveau (un `h3` ne suit pas un `h1`) : le pied
+    /// de page, commun à toutes les pages, s'ouvre par un `h2` et ses colonnes sont des `h3`.
+    #[tokio::test]
+    async fn les_titres_ne_sautent_pas_de_niveau() {
+        let client = app().test().await;
+        // Pages dont le contenu passe encore d'un `h1` à des `h3` (cartes sans titre de
+        // section) : à reprendre avec leur mise en page, voir le journal (itération 41).
+        let a_reprendre = [
+            "/fonctionnalites",
+            "/ia",
+            "/feuille-de-route",
+            "/fair-play",
+            "/contact",
+        ];
+        let mut verifiees = 0;
+        for chemin in PAGES.iter().map(|(c, _)| *c).chain([
+            "/app",
+            "/hors-ligne",
+            "/nulle-part",
+            "/merci?type=liste",
+        ]) {
+            let html = client.get(chemin).await.text();
+            let niveaux = niveaux_des_titres(&html);
+            assert_eq!(niveaux.iter().filter(|n| **n == 1).count(), 1, "{chemin}");
+            let pied = html.split("<footer").nth(1).unwrap_or_default();
+            let titres_du_pied = niveaux_des_titres(pied);
+            assert_eq!(titres_du_pied.first(), Some(&2), "{chemin}");
+            assert!(
+                titres_du_pied.iter().all(|n| *n <= 3),
+                "{chemin} : {titres_du_pied:?}"
+            );
+            if a_reprendre.contains(&chemin) {
+                continue;
+            }
+            let saut = niveaux.windows(2).find(|w| w[1] > w[0] + 1);
+            assert_eq!(saut, None, "{chemin} : {niveaux:?}");
+            verifiees += 1;
+        }
+        assert!(verifiees >= 8, "{verifiees} pages vérifiées");
     }
 
     #[tokio::test]
