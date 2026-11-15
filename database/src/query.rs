@@ -355,8 +355,10 @@ impl Database {
     ///
     /// Quand tous les filtres portent sur des colonnes indexées (espace, joueur, session,
     /// format, type de partie, statut, période), la base les applique, le tri se fait sur
-    /// l'identifiant et la date seuls, et seuls les résumés de la page sont relus. Sinon
-    /// (salle, résultat du héros, abattage), chaque résumé candidat est relu et filtré.
+    /// l'identifiant et la date seuls, et seuls les résumés de la page sont relus. Avec un
+    /// filtre non indexé (salle, résultat du héros, abattage), la base applique les autres,
+    /// seuls ces trois champs du résumé de chaque candidat sont lus pour filtrer, puis le tri
+    /// et la page se font de la même façon.
     pub fn search(&self, query: &HandQuery) -> Result<HandPage> {
         let c = Conditions::of(query);
         if c.complete {

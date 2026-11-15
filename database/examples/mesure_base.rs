@@ -79,7 +79,7 @@ fn main() {
         ),
         ("toutes", HandQuery::new().page(0, 20)),
         (
-            "salle (parcours)",
+            "salle (filtre non indexé)",
             HandQuery::new().site("PokerStars").page(0, 20),
         ),
     ] {
