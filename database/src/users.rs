@@ -187,8 +187,16 @@ impl Database {
         })
     }
 
-    /// Ajoute une mesure de progression à un utilisateur existant.
+    /// Ajoute une mesure de progression à un utilisateur existant. Une valeur non finie
+    /// (`NaN`, infini) est refusée : JSON l'écrirait `null`, et toute la progression de
+    /// l'utilisateur deviendrait illisible.
     pub fn add_progress(&self, user_id: &str, entry: ProgressEntry) -> Result<()> {
+        if !entry.value.is_finite() {
+            return Err(DatabaseError::InvalidValue(format!(
+                "mesure « {} » de « {} » non finie ({})",
+                entry.metric, entry.topic, entry.value
+            )));
+        }
         self.write(|tx| {
             let known = tx.int(
                 "SELECT count(*) FROM profil WHERE id = ?",

@@ -1783,3 +1783,36 @@ site, plus `cargo doc` (itération 52).
 
 **Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
 itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
+
+## 2026-11-15 — Itération 54 : progression, une mesure `NaN` ne rend plus le profil illisible
+
+**CI.** Celle de l'itération 53 (`d9e2e60`) est verte (3 min 40 s) et fusionnée dans
+master (`a64f48f`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Audits sans suite** (pour ne pas les refaire) : site servi localement, aucune balise
+`<img>` (dessins en SVG), donc ni dimension ni `alt` manquants ; les 20 adresses internes
+des pages (liens, scripts, styles, formulaires) répondent `200`, sauf `/liste-attente`
+(`405` à un `GET`, normal : formulaire en `POST`) ; ancres de `/`, `/app`, `/laboratoire`
+présentes. Documentation : plus aucune mention de PostgreSQL, Neon ou redb hors historique.
+
+**Trouvé** (`Database::add_progress`, `database/src/users.rs`). La progression d'un
+utilisateur est un tableau JSON. `serde_json` écrit un `f64` non fini (`NaN`, infini) sous
+la forme `null`, qu'il ne sait pas relire en `f64`. Reproduit : l'ajout d'une mesure `NaN`
+réussit, puis `progress("u1")` **et tout ajout suivant** échouent (« invalid type: null,
+expected f64 ») ; la progression entière de l'utilisateur devient inaccessible.
+
+**Fait.** `add_progress` refuse une valeur non finie avant d'écrire, avec une nouvelle
+erreur `DatabaseError::InvalidValue` qui nomme la mesure. `details` ne risque rien
+(`serde_json::Value` ne contient jamais de nombre non fini), et aucun autre type enregistré
+par la base n'a de champ flottant.
+
+**Mesuré.** Avant : 1 mesure `NaN` → 0 lecture possible, 0 ajout possible. Après : `NaN`,
+`+∞` et `−∞` refusés, les mesures déjà enregistrées restent lisibles et les ajouts
+suivants passent.
+
+**Vérifié.** Nouveau test `progression_valeur_non_finie_refusee` (`database/tests/store.rs`).
+Toutes les commandes de la CI, workspace (avec et sans fonctionnalités par défaut pour
+`stratyx-database`) et site, plus `cargo doc`.
+
+**Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
+itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
