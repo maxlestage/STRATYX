@@ -388,12 +388,60 @@ fn report(
 }
 
 /// Écrit un fichier de modèles (JSON compact).
+///
+/// Le JSON est relu avant d'écrire : un nombre non fini (poids ou métrique `NaN` après un
+/// entraînement qui diverge) s'écrirait `null`, illisible, et les IA, qui chargent ce
+/// fichier à la compilation, échoueraient à leur premier calcul. Le fichier précédent est
+/// alors gardé tel quel. L'écriture passe par un fichier temporaire renommé ensuite :
+/// une interruption ne laisse pas de fichier tronqué.
 pub fn write_bundle(root: &Path, format: Format, bundle: &ModelBundle) -> std::io::Result<PathBuf> {
     let path = root.join(format.model_path());
+    let json = serde_json::to_string(bundle).map_err(std::io::Error::other)?;
+    if let Err(e) = ModelBundle::from_json(&json) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "modèles {} non écrits, illisibles une fois en JSON (valeur non finie ?) : {e}",
+                path.display()
+            ),
+        ));
+    }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let json = serde_json::to_string(bundle).map_err(std::io::Error::other)?;
-    std::fs::write(&path, json)?;
+    let temporaire = path.with_extension("json.tmp");
+    std::fs::write(&temporaire, json)?;
+    std::fs::rename(&temporaire, &path)?;
     Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn modeles() -> ModelBundle {
+        let json = std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../expresso_3max/models/expresso-3max.json"),
+        )
+        .unwrap();
+        ModelBundle::from_json(&json).unwrap()
+    }
+
+    #[test]
+    fn un_modele_illisible_n_ecrase_pas_le_precedent() {
+        let root = std::env::temp_dir().join(format!("stratyx-modeles-{}", std::process::id()));
+        let bundle = modeles();
+        let path = write_bundle(&root, Format::Expresso3Max, &bundle).unwrap();
+        let avant = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(ModelBundle::from_json(&avant).unwrap(), bundle);
+
+        let mut abime = bundle.clone();
+        abime.metrics[0].log_loss = f32::NAN;
+        let err = write_bundle(&root, Format::Expresso3Max, &abime).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData, "{err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), avant);
+        assert!(!path.with_extension("json.tmp").exists());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }

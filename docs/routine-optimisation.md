@@ -1816,3 +1816,33 @@ Toutes les commandes de la CI, workspace (avec et sans fonctionnalités par déf
 
 **Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
 itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
+
+## 2026-11-15 — Itération 55 : entraînement, un modèle illisible n'écrase plus le précédent
+
+**CI.** Celle de l'itération 54 (`4a2a642`) est verte et fusionnée dans master
+(`055a4ab`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Trouvé** (même famille que l'itération 54, `write_bundle`, `ai/training/src/lib.rs`).
+L'entraînement écrit les modèles des IA en JSON (`ai/*/models/*.json`, 125 et 219 Ko),
+sans les relire. Un poids ou une métrique non fini (`NaN` après un entraînement qui
+diverge) s'écrit `null`, que `ModelBundle::from_json` refuse. Or les deux IA chargent ce
+fichier à la compilation (`include_str!`) puis `expect(...)` : le fichier commité aurait
+été remplacé par un fichier illisible, et l'analyse (site, `/app`, CLI) aurait paniqué au
+premier calcul. L'écriture directe (`fs::write`) pouvait aussi laisser un fichier tronqué
+en cas d'interruption.
+
+**Fait.** `write_bundle` relit le JSON produit avant d'écrire ; s'il est illisible, il
+renvoie une erreur `InvalidData` qui nomme le fichier et **garde le fichier précédent**.
+L'écriture passe par `….json.tmp`, renommé ensuite (remplacement atomique).
+
+**Mesuré.** Contre-épreuve : la vérification retirée, le nouveau test échoue (le modèle
+abîmé est écrit par-dessus l'ancien) ; rétablie, il passe. Coût : le test entier (deux
+écritures, deux relectures du modèle Expresso) prend moins de 10 ms, négligeable devant un
+entraînement.
+
+**Vérifié.** Nouveau test `un_modele_illisible_n_ecrase_pas_le_precedent` (modèle Expresso
+réel, une métrique mise à `NaN` : erreur, fichier inchangé, pas de fichier temporaire
+restant). Toutes les commandes de la CI, workspace et site, plus `cargo doc`.
+
+**Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
+itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
