@@ -1301,3 +1301,35 @@ Durée : 1 s une fois le binaire construit.
 **Pistes suivantes.** Le test ne voit pas les adresses que le WebAssembly des îlots
 construirait à l'exécution (pas de `pkg/` ici ni dans le job de tests). `style.css` revalidé
 à chaque page (itération 35).
+
+## 2026-11-15 — Itération 40 : identifiants HTML en double ; le champ « Message » retrouve son libellé
+
+**CI.** Celle de l'itération 39 (`abf0e8b`) est verte et fusionnée dans master.
+
+**Trouvé.** Deux identifiants servaient deux fois dans une même page :
+- `contenu`, sur `/contact` : à la fois `<main id="contenu">` (lien « Aller au contenu ») et
+  la zone de texte du message. Le libellé « Message » (`for="contenu"`) désignait donc
+  `<main>` : cliquer dessus ne plaçait pas le curseur dans le champ, et le champ n'avait
+  **aucun nom accessible** pour un lecteur d'écran. L'audit de l'itération 24 ne l'avait pas
+  vu (le champ a bien un `<label for>`, mais vers le mauvais élément) ;
+- `lg`, sur toutes les pages : le dégradé du logo, dessiné dans l'en-tête et dans le pied.
+
+**Fait.** La zone de texte s'appelle `message` (son nom de formulaire reste `contenu` : rien
+ne change pour le serveur) ; le retour après une erreur de saisie pointe sur elle
+(`/contact?erreur=…#message`). Le logo reçoit un identifiant de dégradé par exemplaire
+(`lg-entete`, `lg-pied`).
+
+**Mesuré** (Chromium, page `/contact`) :
+
+| | Avant | Après |
+|---|---:|---:|
+| libellés associés à la zone de texte | 0 | 1 (« Message ») |
+| champ trouvé par son nom accessible « Message » | non | oui |
+| clic sur le libellé | rien (`body`) | curseur dans le champ |
+| pages avec un identifiant en double | toutes | 0 |
+
+**Vérifié.** `chaque_page_repond` vérifie maintenant, sur chaque page du plan du site,
+`/app`, `/hors-ligne`, la page 404 et `/merci`, qu'aucun identifiant ne sert deux fois.
+Toutes les commandes de la CI, workspace et site.
+
+**Pistes suivantes.** `style.css` revalidé à chaque page (itération 35).
