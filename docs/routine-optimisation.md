@@ -1915,3 +1915,41 @@ proportionnel aux mains trouvées (≈ 3 µs par main), sans gain simple à atte
 
 **Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
 itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
+
+## 2026-11-15 — Itération 58 : recherche par salle (filtres non indexés) 2,3 fois plus rapide
+
+**CI.** Celle de l'itération 57 (`9c8031e`) est verte et fusionnée dans master
+(`6eda933`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Trouvé** (`Database::search`, `database/src/query.rs`). Trois filtres ne sont pas des
+colonnes indexées : salle, résultat du héros, abattage. Avec l'un d'eux, la recherche
+désérialisait **chaque résumé candidat en entier** (joueurs, statut et ses détails), puis
+triait des résumés complets pour n'en garder qu'une page de 20.
+
+**Écarté.** Indexer la salle : il faudrait un schéma 2, et une base migrée ne s'ouvrirait
+plus avec une version antérieure du logiciel. Trop lourd pour ce gain.
+
+**Fait.** `search_filtered` : la base applique toujours les conditions indexées ; de chaque
+candidat, seuls trois champs du résumé (`site`, `hero_net`, `showdown`, sans copie de la
+salle) sont lus pour les filtres non indexés ; le tri et la page se font sur l'identifiant
+et la date, et seuls les 20 résumés de la page sont relus — comme la recherche indexée
+(`page_of`, partagé). Les trois filtres sont écrits une seule fois
+(`HandQuery::matches_unindexed`, utilisé aussi par `matches`). L'ancien parcours reste,
+pour les tests seulement, comme référence.
+
+**Mesuré** (`mesure_base -- 5000`, release, binaires avant/après lancés en alternance,
+5 fois chacun ; toutes les mains sont PokerStars, donc la salle ne filtre rien : pire cas) :
+
+| Recherche, page de 20 | Avant | Après |
+|---|---:|---:|
+| par salle (filtre non indexé) | 13,6 à 20,4 ms | 6,4 à 7,8 ms (≈ 2,3 fois plus vite) |
+| sans filtre (témoin) | 3,7 à 5,9 ms | 3,4 à 5,2 ms |
+
+**Vérifié.** `search_in_base_matches_the_scan` compare en plus, pour les 72 requêtes
+indexées de ce test combinées à 7 filtres non indexés (salle présente ou absente, trois
+résultats du héros, abattage avec et sans, seul ou avec la salle), la nouvelle recherche au
+parcours complet : résultats identiques, et non vides. Toutes les commandes de la CI,
+workspace et site, plus `cargo doc`.
+
+**Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
+itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
