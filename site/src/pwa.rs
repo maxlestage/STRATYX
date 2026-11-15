@@ -214,9 +214,11 @@ const RESEAU = ["/health"];
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE)
-      // Une adresse qui manque n'empêche pas l'installation.
+      // Une adresse qui manque n'empêche pas l'installation. "no-cache" : chaque fichier est
+      // revalidé auprès du serveur (jamais une copie périmée), mais ce que la page vient de
+      // charger n'est pas téléchargé une seconde fois (réponse 304, sans corps).
       .then((cache) => Promise.allSettled(
-        PRECACHE.map((url) => cache.add(new Request(url, { cache: "reload" }))),
+        PRECACHE.map((url) => cache.add(new Request(url, { cache: "no-cache" }))),
       ))
       // Première installation : le worker prend la main tout de suite. Une mise à jour
       // attend que la page la propose (message SKIP_WAITING).
