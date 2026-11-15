@@ -27,6 +27,8 @@ fn main() {
             h.id = format!("m{i}");
             h.meta.played_at_ms = Some(i as u64 * 1_000);
             h.seats[0].player = format!("Joueur{i}");
+            // Un adversaire régulier, assis à une main sur 20 (cas courant d'une recherche).
+            h.seats[2].player = format!("Adversaire{}", i % 20);
             h
         })
         .collect();
@@ -66,7 +68,15 @@ fn main() {
 
     let player = hands[0].seats[1].player.clone();
     for (name, query) in [
-        ("joueur", HandQuery::new().player(player).page(0, 20)),
+        // Assis à toutes les mains : le pire cas du filtre par joueur.
+        (
+            "joueur (toutes les mains)",
+            HandQuery::new().player(player).page(0, 20),
+        ),
+        (
+            "joueur (1 main sur 20)",
+            HandQuery::new().player("Adversaire3").page(0, 20),
+        ),
         ("toutes", HandQuery::new().page(0, 20)),
         (
             "salle (parcours)",
