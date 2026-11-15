@@ -2042,3 +2042,30 @@ dernières pistes restantes sont hors de ce dépôt (Paquets, Nuage DB) ou deman
 décision de l'utilisateur (itérations 48 et 50).
 
 **Vérifié.** Toutes les commandes de la CI, workspace et site, plus `cargo doc`.
+
+## 2026-11-15 — Itération 62 : empreintes de jetons d'API, lecture hexadécimale stricte
+
+**CI.** Celle de l'itération 61 (`dda5bdd`) est verte et fusionnée dans master
+(`b73bb05`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Relu** (`security`, peu visité par la routine). Mots de passe : Argon2id, format PHC,
+comparaison finale en temps constant, longueur bornée ; jetons d'API : 256 bits d'aléa,
+seule l'empreinte SHA-256 est gardée, comparée en temps constant, secrets effacés
+(`Zeroizing`). Rien à redire, sauf un point.
+
+**Trouvé** (`TokenDigest::try_from`, `security/src/auth.rs`). L'empreinte stockée (64
+caractères hexadécimaux) était lue par paires avec `u8::from_str_radix`, qui accepte un
+signe : « +f » vaut 15. Vérifié : `"+f"` répété 32 fois était accepté comme empreinte, et
+ne se réécrivait pas pareil (`Display` donne `0f0f…`). Sans risque d'usurpation (il faut
+déjà pouvoir écrire dans les données stockées), mais une donnée stockée invalide doit être
+refusée, pas réinterprétée.
+
+**Fait.** Lecture chiffre par chiffre (`to_digit(16)`, comme `database/src/hex.rs`) :
+seuls 0-9, a-f et A-F passent.
+
+**Vérifié.** Nouveau test `token_digest_strict_hex` : l'empreinte se relit (minuscules
+comme majuscules) ; signes `+` et `-`, caractère non ASCII, longueur 63 ou 65 refusés.
+Contre-épreuve : sur l'ancien code, le test échoue (« +f… » accepté). Toutes les commandes
+de la CI, workspace et site, plus `cargo doc`.
+
+**Pistes suivantes.** Choix laissés à l'utilisateur : itérations 48, 50 et 61.
