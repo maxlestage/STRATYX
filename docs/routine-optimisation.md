@@ -1587,3 +1587,40 @@ Chromium avec le WebAssembly reconstruit : mêmes libellés, aucune exception.
 **Pistes suivantes.** Couleur `--faint` (itération 42) et titres de 5 pages (itération 41) :
 choix de l'utilisateur. Page d'accueil demandée deux fois à la première visite, préchargement
 du bundle signalé inutilisé par Chromium (itération 45).
+
+## 2026-11-15 — Itération 48 : page `/app` relue et temps de calcul mesurés (pas de changement)
+
+**CI.** Celle de l'itération 47 (`663022d`) est verte et fusionnée dans master.
+
+**Démarche.** Avec le WebAssembly construit ici, lecture du résultat d'une analyse sur
+`/app` (exemple « Expresso Winamax », 375 px : texte complet et capture), puis mesure du
+temps entre le clic et la dernière mise à jour de la page, dans Chromium.
+
+**Constaté.** Rien à corriger :
+- l'analyse s'affiche en entier sur mobile (note, cartes, déroulé, trois décisions avec
+  leurs valeurs), sans débordement ni valeur aberrante ;
+- temps de calcul, bundle `wasm-release`, serveur local :
+
+| Action | Temps jusqu'à l'affichage |
+|---|---:|
+| analyse « Expresso Winamax » (3 essais) | 39 à 41 ms |
+| analyse « Tournoi 6-max PokerStars » (3 essais) | 34 à 36 ms |
+| analyse « Call de tapis léger » (3 essais) | 33 à 34 ms |
+| équité « Coinflip » (calcul exact, 1 712 304 distributions) | 83 ms |
+| équité « Tirage couleur » | 33 ms |
+| équité « Multiway » (Monte-Carlo, 80 000 tirages) | 67 ms |
+
+Une seule tâche de plus de 50 ms (52 ms, « Coinflip »). Mesures sur la machine du bac à
+sable, un seul navigateur : un téléphone sera plus lent, non mesuré.
+
+**Bilan des itérations 40 à 47 (site dans un vrai navigateur).** Les audits automatiques —
+noms accessibles, identifiants, titres, contraste sur le vert, zones tactiles, focus au
+clavier, débordement mobile, erreurs de console, saisies invalides des îlots — ne signalent
+plus rien. Restent des choix qui reviennent à l'utilisateur : couleur `--faint` à 4,49:1
+(itération 42), titres de section sur 5 pages (itération 41), numérotation à partir de 0
+dans les messages du moteur côté CLI (itération 47).
+
+**Pistes suivantes.** Page d'accueil demandée deux fois à la première visite et
+préchargement du bundle signalé inutilisé quand le service worker est actif (itération 45,
+côté Paquets). Hors du site : les crates squelettes (`coaching`, `transcription`, `video`,
+`apps/*`) attendent une décision de fonctionnalités (itération 24).
