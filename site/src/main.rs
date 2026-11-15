@@ -1426,7 +1426,7 @@ async fn accueil(_req: Request) -> Page {
     page(
         "/",
         "Analyse de Texas Hold'em en Rust",
-        "STRATYX retranscrit vos parties de Texas Hold'em, analyse chaque décision avec deux IA spécialisées (Expresso 3-Max, Tournois 6-Max) et vous entraîne. 100 % Rust.",
+        "STRATYX retranscrit vos parties de Texas Hold'em, analyse chaque décision avec deux IA (Expresso 3-Max, Tournois 6-Max) et vous entraîne. 100 % Rust.",
         vec![
             hero.into(),
             bandeau_formats.into(),
@@ -1790,7 +1790,7 @@ async fn analyser_partie(_req: Request) -> Page {
     page(
         "/app",
         "Analyser une partie",
-        "Collez un historique de main PokerStars ou Winamax : STRATYX rejoue la main et compare chaque décision à la référence de l'IA Expresso 3-Max ou Tournois 6-Max. Dans le navigateur, hors ligne compris.",
+        "Collez un historique PokerStars ou Winamax : STRATYX rejoue la main et compare chaque décision à la référence de ses IA, dans le navigateur, même hors ligne.",
         vec![
             bandeau(
                 "Analyse",
@@ -2298,7 +2298,7 @@ async fn mentions(_req: Request) -> Page {
     page_texte(
         "/mentions-legales",
         "Mentions légales",
-        "Éditeur, hébergement et propriété intellectuelle.",
+        "Mentions légales de STRATYX : éditeur du site, hébergement et propriété intellectuelle.",
         &MENTIONS,
     )
 }
@@ -2316,7 +2316,7 @@ async fn plan(_req: Request) -> Page {
     page(
         "/plan-du-site",
         "Plan du site",
-        "Toutes les pages du site STRATYX.",
+        "Toutes les pages du site STRATYX : fonctionnalités, IA, laboratoire, analyse, technologie, feuille de route et informations légales.",
         vec![
             bandeau(
                 "Navigation",
@@ -2811,6 +2811,30 @@ mod tests {
             .send()
             .await;
         assert_eq!(res.status(), 200);
+    }
+
+    /// Chaque page du plan a sa propre description, ni trop courte ni coupée dans les
+    /// résultats des moteurs de recherche (50 à 160 caractères, entités HTML décodées).
+    #[tokio::test]
+    async fn descriptions_des_pages() {
+        let client = app().test().await;
+        let mut vues = std::collections::BTreeSet::new();
+        for (chemin, _) in PAGES {
+            let html = client.get(chemin).await.text();
+            let description = html
+                .split("name=\"description\" content=\"")
+                .nth(1)
+                .and_then(|suite| suite.split('"').next())
+                .unwrap_or_else(|| panic!("{chemin} : pas de description"))
+                .replace("&#x27;", "'")
+                .replace("&amp;", "&");
+            let longueur = description.chars().count();
+            assert!(
+                (50..=160).contains(&longueur),
+                "{chemin} : description de {longueur} caractères"
+            );
+            assert!(vues.insert(description), "{chemin} : description en double");
+        }
     }
 
     #[tokio::test]
