@@ -1881,3 +1881,37 @@ sans fonctionnalités par défaut pour `stratyx-database`) et site, plus `cargo 
 
 **Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
 itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
+
+## 2026-11-15 — Itération 57 : recherche par joueur, mesurée sur un cas réaliste (pas de changement de la recherche)
+
+**CI.** Celle de l'itération 56 (`d8d7097`) est verte et fusionnée dans master
+(`f0be5c9`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Piste.** `mesure_base -- 5000` donnait 17 ms par page pour la recherche par joueur,
+plus que la lecture de toute la table (3,6 ms). Or le joueur choisi par l'exemple était
+assis à **toutes** les mains : c'est le pire cas, pas l'usage courant (un adversaire
+régulier).
+
+**Mesuré** (5 000 mains, release, requête SQL seule, 20 répétitions, test temporaire
+retiré ensuite) :
+
+| Requête | Joueur à 5 000 mains | à 250 mains | à 1 main |
+|---|---:|---:|---:|
+| `id IN (SELECT main FROM main_joueur WHERE joueur = ?)` (actuelle) | 16,3 ms | 0,67 ms | 0,010 ms |
+| jointure `main JOIN main_joueur` | 12,5 ms | 4,0 ms | 4,5 ms |
+| index `main_joueur` seul (borne basse) | 6,3 ms | 0,38 ms | 0,003 ms |
+| toute la table `main` (témoin) | 3,0 ms | 3,0 ms | 3,0 ms |
+
+**Écarté.** La jointure ne gagne qu'au pire cas et est 6 à 450 fois plus lente quand le
+joueur est rare : la sous-requête actuelle est le bon choix. Coût de la sous-requête
+proportionnel aux mains trouvées (≈ 3 µs par main), sans gain simple à attendre.
+
+**Fait.** `mesure_base` mesure aussi le cas réaliste : un adversaire assis à une main sur
+20 (« joueur (1 main sur 20) » : 0,84 ms par page), à côté du pire cas renommé « joueur
+(toutes les mains) » (16,8 ms). Les autres mesures de l'exemple ne bougent pas
+(revalidation 0,18 s, écriture 190 µs par main sur cette exécution).
+
+**Vérifié.** Toutes les commandes de la CI, workspace et site, plus `cargo doc`.
+
+**Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
+itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
