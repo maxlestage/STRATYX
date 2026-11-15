@@ -13,7 +13,7 @@ use stratyx_poker::Street;
 use stratyx_poker::import::{SAMPLE_POKERSTARS, SAMPLE_WINAMAX};
 use stratyx_strategy::{Basis, Decision};
 
-use crate::{carte_html, plus_tard};
+use crate::{carte_html, ensuite, maintenant_ms, plus_tard};
 
 /// Un exemple pédagogique : un call de tapis trop léger en tête-à-tête (gagné à la river,
 /// mais perdant à long terme).
@@ -461,23 +461,33 @@ fn analyser_session(
         bilan: State<Option<SessionReport>>,
         progression: State<Option<(usize, usize)>>,
     ) {
+        /// Durée d'un morceau de calcul avant de rendre la main à la page : assez court
+        /// pour que le défilement et les clics restent fluides.
+        const MORCEAU_MS: f64 = 40.0;
         let total = mains.with(Vec::len);
-        let fin = (i + 4).min(total);
         let options = Options {
             samples: 900,
             ..Options::default()
         };
         let nom = joueur.get();
+        let debut = maintenant_ms();
+        let mut fin = i;
         mains.with(|m| {
-            for (k, h) in m.iter().enumerate().take(fin).skip(i) {
+            // Au moins une main par morceau, puis autant que le temps imparti le permet
+            // (et non un nombre fixe suivi d'une attente : l'attente dominait le calcul).
+            while let Some(h) = m.get(fin) {
                 let hero = if nom.trim().is_empty() {
                     h.hero.as_deref()
                 } else {
                     Some(nom.trim())
                 };
                 match stratyx_analytics::analyse(&h.record, hero, &options) {
-                    Ok(a) => b.add(k, &h.record, &a),
+                    Ok(a) => b.add(fin, &h.record, &a),
                     Err(_) => b.skip(),
+                }
+                fin += 1;
+                if maintenant_ms() - debut >= MORCEAU_MS {
+                    break;
                 }
             }
         });
@@ -486,7 +496,7 @@ fn analyser_session(
             bilan.set(Some(b.finish()));
         } else {
             progression.set(Some((fin, total)));
-            plus_tard(move || etape(fin, b, mains, joueur, bilan, progression));
+            ensuite(move || etape(fin, b, mains, joueur, bilan, progression));
         }
     }
     bilan.set(None);
