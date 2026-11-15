@@ -2442,6 +2442,10 @@ fn app() -> App {
     // îlots : le routeur d'Heroku ne compresse pas. Les fichiers statiques sont compressés
     // une fois (niveau maximal) puis gardés en cache ; les pages, au niveau rapide.
     app.middleware(middleware::compress());
+    // `ETag` faible des réponses en mémoire (pages, manifeste, `sw.js`…), calculé avant la
+    // compression : un navigateur ou le service worker qui a déjà la page reçoit `304` sans
+    // corps (les fichiers statiques ont déjà le leur).
+    app.middleware(middleware::etag());
     app.get("/", accueil);
     app.get("/fonctionnalites", fonctionnalites);
     app.get("/ia", les_ia);
@@ -2766,6 +2770,47 @@ mod tests {
         }
         assert_eq!(base::compter("inscrit").await.unwrap(), avant.0 + 1);
         assert_eq!(base::compter("message").await.unwrap(), avant.1 + 1);
+    }
+
+    /// Une page déjà en cache (navigateur ou pré-cache du service worker, qui revalide avec
+    /// `no-cache`) est revalidée par son `ETag` : `304` sans corps, même compressée.
+    #[tokio::test]
+    async fn pages_revalidees_par_etag() {
+        let client = app().test().await;
+        for chemin in [
+            "/",
+            "/app",
+            "/contact",
+            "/hors-ligne",
+            "/manifest.webmanifest",
+        ] {
+            let res = client
+                .get(chemin)
+                .header("accept-encoding", "br")
+                .send()
+                .await;
+            assert_eq!(res.status(), 200, "{chemin}");
+            let etag = res.header("etag").expect(chemin).to_owned();
+            assert!(etag.starts_with("W/\""), "{chemin} : {etag}");
+            // Même page, même étiquette : le HTML ne dépend pas de la requête.
+            let encore = client.get(chemin).send().await;
+            assert_eq!(encore.header("etag"), Some(etag.as_str()), "{chemin}");
+            let revalide = client
+                .get(chemin)
+                .header("accept-encoding", "br")
+                .header("if-none-match", &etag)
+                .send()
+                .await;
+            assert_eq!(revalide.status(), 304, "{chemin}");
+            assert!(revalide.text().is_empty(), "{chemin}");
+        }
+        // Une autre version de la page est renvoyée en entier.
+        let res = client
+            .get("/")
+            .header("if-none-match", "W/\"0-0\"")
+            .send()
+            .await;
+        assert_eq!(res.status(), 200);
     }
 
     #[tokio::test]
