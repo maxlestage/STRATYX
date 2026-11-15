@@ -2012,3 +2012,33 @@ itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
 **Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
 itération 45). Choix laissés à l'utilisateur : itérations 48 et 50 (dont la fréquence de
 la routine : les chemins chauds côté utilisateur sont tous mesurés et optimisés).
+
+## 2026-11-15 — Itération 61 : formulaires du site face à des requêtes anormales (pas de changement)
+
+**CI.** Celle de l'itération 60 (`91b9a45`) est verte et fusionnée dans master
+(`addb500`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Audit sans suite** (serveur local, `POST` sur `/contact` et `/liste-attente`) :
+
+| Requête | `/contact` | `/liste-attente` |
+|---|---|---|
+| corps de 5 Mo | `413` en 1,5 ms | `413` en 0,7 ms |
+| e-mail en octets UTF-8 invalides (`%ff%fe`) | `400` | `303` vers `/merci?type=erreur` |
+| e-mail invalide (`pas-un-email`) | — | `303` vers `/merci?type=erreur` |
+| JSON au lieu d'un formulaire | `400` | `400` |
+| corps vide | `400` | `400` |
+| e-mail valide | — | `303` vers `/merci?type=liste` |
+
+Aucune panique ni réponse `500` ; la limite de taille joue avant la lecture du corps.
+Bundle WebAssembly : profil `wasm-release` (`opt-level = "s"`, LTO, une unité, `panic =
+abort`, `strip`) déjà arbitré à l'itération 17. `wasm-opt` (Binaryen, écrit en C++) n'est
+pas utilisé : l'ajouter à la construction serait une exception à la règle 100 % Rust, à
+décider par l'utilisateur.
+
+**Bilan.** Les itérations 51 à 61 ont couvert le cache HTTP, la documentation, le
+référencement, la robustesse des écritures (progression, modèles), la revalidation et la
+recherche de la base locale. Les chemins chauds côté utilisateur sont tous mesurés ; les
+dernières pistes restantes sont hors de ce dépôt (Paquets, Nuage DB) ou demandent une
+décision de l'utilisateur (itérations 48 et 50).
+
+**Vérifié.** Toutes les commandes de la CI, workspace et site, plus `cargo doc`.
