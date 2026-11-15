@@ -1403,3 +1403,36 @@ ou une image (fond non calculable simplement) : 249 textes mesurés sur 15 pages
 clair (`--bg-3`), juste sous 4,5:1 : elle sert à 18 règles (mentions, libellés, texte
 d'exemple des champs). L'éclaircir est un choix de charte, laissé à l'utilisateur. Titres :
 5 pages à reprendre (itération 41).
+
+## 2026-11-15 — Itération 43 : audit mobile ; liens du pied de page, zone tactile de 23 → 35 px
+
+**CI.** Celle de l'itération 42 (`a504453`) est verte et fusionnée dans master.
+
+**Démarche.** Audit dans Chromium des 15 pages à 320, 375 et 768 px de large (écran tactile
+pour les deux premières) : page plus large que l'écran, texte coupé par un conteneur, zones
+tactiles de moins de 24 px (critère WCAG 2.2 « taille de la cible », hors liens dans une
+phrase ou une liste).
+
+**Trouvé.** Aucun débordement horizontal ni texte coupé, sur aucune page et à aucune
+largeur. Seul défaut : cinq liens isolés du pied de page (« Mentions légales »,
+« Confidentialité », « Plan du site », « sitemap.xml », et « Fair-play » dans le bandeau du jeu
+responsable) n'offraient que 23 px de haut, sur toutes les pages.
+
+**Fait.** Ces liens reçoivent 6 px de marge intérieure en haut et en bas ; leur soulignement
+au survol reste sous le texte, et l'écart entre les lignes de liens est repris par cette
+marge.
+
+**Mesuré.**
+
+| | Avant | Après |
+|---|---:|---:|
+| signalements de l'audit (15 pages × 3 largeurs) | 225 | 0 |
+| hauteur des cinq liens | 23 px | 35 px |
+| hauteur du bas de page à 1280 px | 105 px | 105 px |
+| hauteur du bas de page à 320 px | 207 px | 223 px |
+
+**Vérifié.** Test `les_liens_du_pied_ont_une_zone_tactile` (règle présente, liens bien dans
+ces blocs) ; rendu contrôlé sur capture. Toutes les commandes de la CI, workspace et site.
+
+**Pistes suivantes.** Couleur `--faint` (itération 42) et titres de 5 pages (itération 41),
+laissés au choix de l'utilisateur.

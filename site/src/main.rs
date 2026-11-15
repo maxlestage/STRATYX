@@ -2909,6 +2909,20 @@ mod tests {
         assert!(sur_vert >= 10, "{sur_vert} règles à fond vert");
     }
 
+    /// Les liens isolés du pied de page (mentions, fair-play) gardent une zone tactile d'au
+    /// moins 24 px de haut : 23 px de texte plus leur marge intérieure.
+    #[tokio::test]
+    async fn les_liens_du_pied_ont_une_zone_tactile() {
+        let css = std::fs::read_to_string("public/style.css").unwrap();
+        assert!(css.contains(".legal .u-link, .responsible .u-link { padding: 6px 0;"));
+        let html = app().test().await.get("/").await.text();
+        let pied = html.split("<footer").nth(1).unwrap();
+        for classe in ["class=\"legal\"", "class=\"responsible\""] {
+            let bloc = pied.split(classe).nth(1).unwrap_or_default();
+            assert!(bloc.contains("class=\"u-link\""), "{classe}");
+        }
+    }
+
     /// Les niveaux de titres d'une page, dans l'ordre du document.
     fn niveaux_des_titres(html: &str) -> Vec<u8> {
         html.split("<h")
