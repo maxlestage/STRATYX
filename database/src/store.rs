@@ -296,6 +296,9 @@ impl Database {
                 let Some(old) = read_hand_in(tx, &id)? else {
                     continue;
                 };
+                if hand_is_current(tx, &old, self.review_threshold)? {
+                    continue;
+                }
                 let summary = match store_hand(
                     tx,
                     &old.record,
@@ -390,6 +393,30 @@ pub(crate) fn insert_hand_row(tx: &Tx<'_>, stored: &StoredHand, s: &HandSummary)
     }
     tx.exec(&sql, &params)?;
     Ok(())
+}
+
+/// Vrai si réenregistrer la main ne changerait rien : format d'enregistrement actuel, résumé
+/// recalculé identique (même JSON) à celui de la ligne de recherche, d'où dérivent tous les
+/// index, et empreinte présente dans la table des empreintes (une réécriture l'ajouterait).
+fn hand_is_current(tx: &Tx<'_>, old: &StoredHand, threshold: Confidence) -> Result<bool> {
+    if old.format_version != HAND_FORMAT_VERSION {
+        return Ok(false);
+    }
+    let record = &old.record;
+    let summary = analyze(record, Space::for_format(record.format), threshold);
+    let stored = tx.text(
+        "SELECT resume FROM main WHERE id = ?",
+        &[record.id.as_str().into()],
+    )?;
+    if stored.as_deref() != Some(to_json(&summary)?.as_str()) {
+        return Ok(false);
+    }
+    Ok(tx
+        .text(
+            "SELECT main FROM empreinte WHERE empreinte = ?",
+            &[summary.fingerprint.to_hex().into()],
+        )?
+        .is_some())
 }
 
 /// Enregistre une main (et ses index) dans la transaction.
