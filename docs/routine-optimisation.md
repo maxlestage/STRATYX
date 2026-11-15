@@ -1846,3 +1846,38 @@ restant). Toutes les commandes de la CI, workspace et site, plus `cargo doc`.
 
 **Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
 itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
+
+## 2026-11-15 — Itération 56 : revalidation de la base locale 6 fois plus rapide
+
+**CI.** Celle de l'itération 55 (`7aa903d`) est verte et fusionnée dans master
+(`cbd187c`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Audit sans suite.** Serveur du site : aucun `unwrap`/`expect` hors des tests sur le
+chemin des requêtes.
+
+**Trouvé** (`Database::revalidate`, `database/src/store.rs`, avec `mesure_base -- 5000`).
+Revalider 5 000 mains sans aucun changement prenait 1,5 s, plus que les écrire : chaque
+main était supprimée puis réinsérée avec tous ses index (ligne de recherche, données,
+empreinte, joueurs), même quand le moteur rendait exactement le même résultat.
+
+**Fait.** Avant de réécrire une main, `hand_is_current` vérifie qu'elle est au format
+d'enregistrement actuel, que son résumé recalculé est identique, au JSON près, à celui de
+sa ligne de recherche (tous les index en dérivent, avec la main elle-même, inchangée), et
+que son empreinte figure dans la table des empreintes (une réécriture l'y remettrait).
+Sinon, elle est réécrite comme avant. Seule différence visible : une main inchangée garde
+sa date d'enregistrement (`stored_at_ms`).
+
+**Mesuré** (`mesure_base -- 5000`, release, 3 exécutions de chaque version) :
+
+| | Avant | Après |
+|---|---:|---:|
+| revalidation, 0 main changée | 1,46 à 1,77 s | 0,25 à 0,29 s (≈ 6 fois plus vite) |
+| écriture d'une main (témoin) | 190 à 240 µs | 206 à 236 µs |
+
+**Vérifié.** Le test `revalidation_applies_a_new_review_threshold` contrôle en plus que
+seule la main dont le statut change est réécrite (sa date avance, celle de l'autre ne
+bouge pas) ; il échoue sur l'ancien code. Toutes les commandes de la CI, workspace (avec et
+sans fonctionnalités par défaut pour `stratyx-database`) et site, plus `cargo doc`.
+
+**Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
+itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
