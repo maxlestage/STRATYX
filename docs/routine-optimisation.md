@@ -1553,3 +1553,37 @@ reconstruit et relu dans Chromium. Toutes les commandes de la CI, workspace et s
 d'équité (« la range du joueur 0 est vide… ») : le texte vient du moteur, partagé avec la
 CLI ; à décider. La grille des ranges n'affiche aucun message pour une saisie invalide
 (`ZZ+`) : à vérifier. Couleur `--faint`, titres de 5 pages : choix de l'utilisateur.
+
+## 2026-11-15 — Itération 47 : calculateur d'équité, les joueurs gardent le numéro de leur champ
+
+**CI.** Celle de l'itération 46 (`39e99f3`) est verte et fusionnée dans master.
+
+**Écarté.** La piste « la grille des ranges n'affiche aucun message » était une erreur de
+ma lecture (le script de l'itération 46 retirait le bloc avant de le lire) : relue, la
+grille affiche bien un message pour chaque saisie invalide (15 essais). Rien à corriger.
+
+**Trouvé** (`calculer_equite`, `site/src/lib.rs`). Les champs vides étaient retirés avant
+le calcul, puis les joueurs renumérotés à la suite :
+- champ « Joueur 1 » vide, champs 2 et 3 remplis : les résultats s'affichaient sous
+  « Joueur 1 » et « Joueur 2 » ;
+- les messages comptaient à partir de 0 et dans cette liste réduite (« la range du joueur 0
+  est vide… ») ;
+- une range illisible ne disait pas de quel joueur elle venait ;
+- sans aucune main : « il faut entre 2 et 10 joueurs (reçu : 0) », alors que l'écran n'a
+  que trois champs.
+
+**Fait.** Chaque joueur garde le numéro de son champ, dans les lignes de résultat et dans
+les messages (« joueur 2 : range invalide… », « la range du joueur 3 est vide… »,
+« indiquez les mains d'au moins deux joueurs »). Le moteur (`stratyx-poker`) et ses messages,
+partagés avec la CLI, ne sont pas modifiés : le site traduit les deux cas concernés.
+
+**Mesuré.** Test `l_equite_nomme_les_joueurs_comme_a_l_ecran` : 2 dispositions avec un
+champ vide et 6 saisies en erreur, toutes numérotées comme à l'écran, aucune « joueur 0 »
+(avant : 2 dispositions mal étiquetées, 2 messages décalés, 2 sans numéro). Relu dans
+Chromium avec le WebAssembly reconstruit : mêmes libellés, aucune exception.
+
+**Vérifié.** Toutes les commandes de la CI, workspace et site.
+
+**Pistes suivantes.** Couleur `--faint` (itération 42) et titres de 5 pages (itération 41) :
+choix de l'utilisateur. Page d'accueil demandée deux fois à la première visite, préchargement
+du bundle signalé inutilisé par Chromium (itération 45).
