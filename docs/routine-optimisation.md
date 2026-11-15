@@ -1953,3 +1953,34 @@ workspace et site, plus `cargo doc`.
 
 **Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
 itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
+
+## 2026-11-15 — Itération 59 : profil de la base locale (pas de piste côté STRATYX), documentation de la recherche à jour
+
+**CI.** Celle de l'itération 58 (`a0e805c`) est verte et fusionnée dans master
+(`982725b`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Mesuré** (callgrind sur `mesure_base -- 600`, release avec tables de lignes ; 1,25 G
+instructions), pour ne pas le refaire :
+
+| Part du total | Où |
+|---:|---|
+| 51 % | exécution SQL de Nuage DB (dont 25 % à filtrer les lignes, 19 % à insérer) |
+| 13 % | allocations (`malloc`, `free`, `realloc`), surtout dans Nuage |
+| 8 % | relecture JSON des mains (`HandRecord`), nécessaire au rejeu de la revalidation |
+| 7 % | SHA-256 des empreintes (déduplication) |
+
+Aucune fonction de STRATYX ne coûte par elle-même : le reste du temps est dans Nuage DB
+(dépôt à part, optimisé à la demande de l'utilisateur à l'itération 29) ou dans un travail
+nécessaire. Pas de piste rentable côté STRATYX pour la base. Écarté aussi : les divisions
+des statistiques (`analytics`) qui pourraient donner `NaN` sont déjà gardées (`max(1)`,
+`then`).
+
+**Fait.** La documentation de `Database::search` décrivait encore l'ancien parcours pour
+les filtres non indexés (« chaque résumé candidat est relu ») : elle décrit la lecture des
+trois champs de l'itération 58. Dans `mesure_base`, la mesure « salle (parcours) »
+s'appelle « salle (filtre non indexé) » (6,5 ms par page, 5 000 mains).
+
+**Vérifié.** Toutes les commandes de la CI, workspace et site, plus `cargo doc`.
+
+**Pistes suivantes.** Avertissement « preload … not used » du bundle (côté Paquets,
+itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
