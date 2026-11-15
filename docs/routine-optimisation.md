@@ -1624,3 +1624,42 @@ dans les messages du moteur côté CLI (itération 47).
 préchargement du bundle signalé inutilisé quand le service worker est actif (itération 45,
 côté Paquets). Hors du site : les crates squelettes (`coaching`, `transcription`, `video`,
 `apps/*`) attendent une décision de fonctionnalités (itération 24).
+
+## 2026-11-15 — Itération 49 : analyse d'une session entière 6 fois plus rapide dans le navigateur
+
+**CI.** Celle de l'itération 48 (`a8ef919`) est verte et fusionnée dans master.
+
+**Démarche.** Test de charge de `/app` dans Chromium avec le WebAssembly : 1 à 1 000 mains
+collées (les trois exemples répétés, 837 Ko pour 1 000), lecture puis « Analyser toute la
+session ». La lecture seule est rapide (143 ms pour 1 000 mains, aucune erreur).
+
+**Trouvé** (`analyser_session`, `site/src/analyse.rs`). Pour laisser la page fluide,
+l'analyse avançait par paquets de 4 mains séparés par une attente de 30 ms. Or une main se
+calcule en 1,5 ms environ : sur 1 000 mains, 250 attentes de 30 ms, soit 7,5 s d'attente
+pour 1,5 s de calcul.
+
+**Fait.** Les paquets sont bornés par le temps et non par un nombre : le calcul continue
+tant que 40 ms ne sont pas écoulées (au moins une main), puis rend la main au navigateur et
+reprend aussitôt (`ensuite`, attente nulle). Hors du navigateur (tests), rien n'est découpé.
+
+**Mesuré** (Chromium, bundle `wasm-release`, du clic au bilan affiché) :
+
+| Mains | Avant | Après |
+|---:|---:|---:|
+| 10 | 154 ms | 105 ms |
+| 50 | 495 ms | 164 ms |
+| 200 | 1 812 ms | 385 ms |
+| 1 000 | 8 987 ms | 1 472 ms (6,1 fois plus vite) |
+
+L'en-tête du bilan affiché (260 premiers caractères : mains analysées, note, EV perdue,
+décomptes des décisions) est identique avant et après pour chaque taille. Fluidité pendant l'analyse de 1 000 mains, après : 46 images
+en 1,45 s, écart médian de 33 ms entre deux images, 50 ms au plus, 29 étapes de progression
+affichées (« 31 / 1000 mains »…) ; aucune tâche de plus de 50 ms relevée, avant comme après.
+
+**Vérifié.** Lint natif et WebAssembly, tests du site (l'analyse de session n'a pas de
+test propre : son découpage dépend de l'horloge du navigateur, mesuré ci-dessus). Toutes
+les commandes de la CI, workspace et site.
+
+**Pistes suivantes.** Mesures sur la machine du bac à sable ; sur un téléphone, un morceau
+de 40 ms contiendra moins de mains mais gardera la même fluidité. Choix laissés à
+l'utilisateur : voir l'itération 48.

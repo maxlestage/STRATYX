@@ -75,17 +75,44 @@ pub fn donner(n: usize) -> Vec<u8> {
 
 /// Lance `f` un peu plus tard, pour que la page affiche d'abord « calcul en cours ».
 pub(crate) fn plus_tard(f: impl FnOnce() + 'static) {
+    dans(30, f);
+}
+
+/// Rend la main au navigateur (affichage, clics), puis reprend aussitôt : entre deux
+/// morceaux d'un long calcul.
+pub(crate) fn ensuite(f: impl FnOnce() + 'static) {
+    dans(0, f);
+}
+
+/// Appelle `f` dans `ms` millisecondes (tout de suite hors du navigateur).
+fn dans(ms: i32, f: impl FnOnce() + 'static) {
     #[cfg(target_arch = "wasm32")]
     {
         use wasm_bindgen::JsCast;
         let rappel = wasm_bindgen::closure::Closure::once_into_js(f);
         if let Some(w) = web_sys::window() {
             let _ =
-                w.set_timeout_with_callback_and_timeout_and_arguments_0(rappel.unchecked_ref(), 30);
+                w.set_timeout_with_callback_and_timeout_and_arguments_0(rappel.unchecked_ref(), ms);
         }
     }
     #[cfg(not(target_arch = "wasm32"))]
-    f();
+    {
+        let _ = ms;
+        f();
+    }
+}
+
+/// L'heure en millisecondes, pour borner un morceau de calcul. Hors du navigateur il n'y a
+/// pas d'affichage à préserver : toujours 0, un calcul n'est jamais découpé.
+pub(crate) fn maintenant_ms() -> f64 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        js_sys::Date::now()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        0.0
+    }
 }
 
 fn carte_de(id: u8) -> Option<Card> {
