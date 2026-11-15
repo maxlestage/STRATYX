@@ -1663,3 +1663,32 @@ les commandes de la CI, workspace et site.
 **Pistes suivantes.** Mesures sur la machine du bac à sable ; sur un téléphone, un morceau
 de 40 ms contiendra moins de mains mais gardera la même fluidité. Choix laissés à
 l'utilisateur : voir l'itération 48.
+
+## 2026-11-15 — Itération 50 : production hors ligne (quota d'heures Eco d'Heroku épuisé), pas de changement de code
+
+**CI.** Celle de l'itération 49 (`b32ee75`) est verte, fusionnée et déployée (version 62
+d'Heroku, 09:44 UTC, « succeeded »).
+
+**Constaté** (10:32 UTC). En vérifiant le déploiement, toutes les adresses de la
+production (`/`, `/app`, `/sw.js`, `/health`, fichiers statiques) répondent **503** en
+0,4 s, avec la page d'Heroku « Application's dyno hours exhausted ». Le dyno web de l'app
+`stratyx` est de type Eco, à l'état `idle` ; l'app n'est pas en maintenance. Le serveur
+Nuage DB (autre app) répond.
+
+**Cause.** Le quota mensuel d'heures Eco du compte Heroku est épuisé : Heroku n'allume plus
+aucun dyno Eco du compte jusqu'au mois suivant. Ce n'est pas un défaut du code ni du
+déploiement.
+
+**Non fait, volontairement.** Changer le type de dyno ou acheter des heures engage une
+dépense : laissé à l'utilisateur (prévenu par notification). Rien n'a été modifié sur
+Heroku ; la routine n'y a fait que des lectures.
+
+**À savoir.** Un dyno Eco s'endort après 30 minutes sans trafic, et chaque déploiement le
+redémarre : à un déploiement par heure (un par itération fusionnée, y compris celles qui ne
+changent que ce journal), il reste éveillé environ la moitié du temps, ce qui consomme des
+heures Eco en continu. Pistes, à décider par l'utilisateur : dyno Basic pour `stratyx`,
+fréquence réduite de la routine, ou ne déployer (`heroku.yml`) que si `site/` ou une crate
+dont il dépend a changé.
+
+**Pistes suivantes.** Tant que la production est hors ligne, les vérifications « en
+production » des itérations sont impossibles ; les mesures locales restent valables.
