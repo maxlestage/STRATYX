@@ -12,7 +12,7 @@
 //! | [`spot`]    | une situation de décision et ses caractéristiques numériques |
 //! | [`mc`]      | équité Monte-Carlo contre des ranges pondérées (graine explicite) |
 //! | [`villain`] | ranges probables des adversaires d'après leurs actions |
-//! | [`reference`] | décision de référence d'un spot, indépendante du résultat |
+//! | [`reference`](mod@reference) | décision de référence d'un spot, indépendante du résultat |
 //! | [`model`]   | modèles appris (softmax, perceptron multicouche), en Rust pur |
 //! | [`bundle`]  | les modèles d'une IA, réunis en un fichier JSON |
 //!
