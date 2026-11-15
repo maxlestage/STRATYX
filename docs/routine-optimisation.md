@@ -1692,3 +1692,36 @@ dont il dépend a changé.
 
 **Pistes suivantes.** Tant que la production est hors ligne, les vérifications « en
 production » des itérations sont impossibles ; les mesures locales restent valables.
+
+## 2026-11-15 — Itération 51 : pages HTML revalidées par `ETag` (304 sans corps)
+
+**CI.** Celle de l'itération 50 (`62433fe`) est verte et fusionnée dans master. La
+production reste hors ligne (itération 50) : mesures locales seulement.
+
+**Trouvé** (piste de l'itération 45). Les pages HTML (et le manifeste, `sw.js`, la page
+hors ligne) partaient sans `ETag` : quand le service worker revalide son pré-cache
+(`cache: "no-cache"`) ou qu'un navigateur redemande une page déjà vue, le serveur ne peut
+pas répondre `304` et renvoie la page entière. Les fichiers statiques avaient déjà le leur.
+Le HTML d'une page est identique d'une requête à l'autre (vérifié : même empreinte pour
+`/`, `/app`, `/contact`), donc une étiquette du corps est stable.
+
+**Fait.** `app.middleware(middleware::etag())` (Vitesse, via Paquets), ajouté après
+`compress()` : l'étiquette faible est calculée sur le corps non compressé, la réponse `304`
+part sans corps, et une page `200` est compressée comme avant. Aucune dépendance ajoutée.
+
+**Mesuré** (serveur local, 13 pages HTML du pré-cache lues dans `sw.js`, Brotli,
+revalidation avec l'étiquette reçue) :
+
+| | Avant | Après |
+|---|---:|---:|
+| octets au premier chargement | 92 493 | 92 493 |
+| octets à la revalidation | 92 493 | 0 |
+| réponses `304` | 0 / 13 | 13 / 13 |
+
+**Vérifié.** Nouveau test `pages_revalidees_par_etag` (`/`, `/app`, `/contact`,
+`/hors-ligne`, manifeste : étiquette faible stable, `304` à corps vide avec Brotli, `200`
+pour une autre étiquette). Toutes les commandes de la CI, workspace et site (y compris
+l'export statique et le lint WebAssembly).
+
+**Pistes suivantes.** Avertissement « preload … not used » du bundle quand le worker est
+actif (côté Paquets, itération 45). Choix laissés à l'utilisateur : itérations 48 et 50.
