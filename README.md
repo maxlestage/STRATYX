@@ -40,7 +40,7 @@ tournois, sit & go et Expresso.
 ## Démarrer
 
 ```sh
-cargo test --workspace                                # tests (≈ 25 s sur 4 cœurs, une fois compilés)
+cargo test --workspace                                # tests (≈ 20 s sur 4 cœurs, une fois compilés)
 cargo test --release -p stratyx-poker -- --ignored    # évaluateur exhaustif, 133 M de mains
 cargo deny check                                      # audit « 100 % Rust » (cargo install cargo-deny)
 
