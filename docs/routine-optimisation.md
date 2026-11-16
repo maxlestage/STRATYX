@@ -2154,3 +2154,28 @@ des tests de fuzzing (itérations 13 et 14).
 seul modifié).
 
 **Pistes suivantes.** Choix laissés à l'utilisateur : itérations 48, 50 et 61.
+
+## 2026-11-16 — Itération 66 : résultats de tournoi, un montant abîmé ne change plus de signe
+
+**CI.** Celle de l'itération 65 (`4ab7669`) est verte et fusionnée dans master
+(`6be3452`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Trouvé** (`TournamentResult::profit`, `poker/src/session.rs`, et les totaux de
+`analytics/src/tournament.rs` : ROI, ITM, multiplicateurs). Les résultats de tournoi ne
+viennent pas des historiques texte (bornés à 2⁶², itération 65) mais des sessions lues
+d'une base ou d'un export. Le bénéfice se calculait `gains as i64 - droits as i64` et les
+totaux par `+=` : avec un montant abîmé au-delà de `i64::MAX`, un gain de 10¹⁹ centimes
+devenait une **perte** de 8,4·10¹⁸ (vérifié) ; en débogage, les sommes paniquaient.
+
+**Fait.** `stratyx_poker::net_cents(gains, coûts)` : différence calculée en `i128`, bornée
+à `i64` (signe toujours juste), utilisée par le résultat d'un tournoi et par les totaux.
+Sommes des totaux saturées ; multiplicateur moyen sommé en `u128`. Aucun changement pour des
+montants réels.
+
+**Vérifié.** Nouveau test `corrupted_amounts_saturate` (gain démesuré → `i64::MAX`, droits
+`u64::MAX` → `i64::MIN`, totaux saturés sans panique, multiplicateur moyen et fréquence
+justes) ; contre-épreuve : sur l'ancien calcul, il échoue (signe inversé). Les tests
+existants (ROI, ITM, multiplicateurs) passent inchangés. Toutes les commandes de la CI,
+workspace et site, plus `cargo doc`.
+
+**Pistes suivantes.** Choix laissés à l'utilisateur : itérations 48, 50 et 61.

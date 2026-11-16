@@ -41,4 +41,4 @@ pub use format::{GameFormat, GameType, Specialist};
 pub use game::{Action, BettingStructure, Blinds, HandSetup, HandState, Street};
 pub use history::{HandEvent, HandMeta, HandRecord, SeatRecord};
 pub use range::{HandClass, HoleCards, Range};
-pub use session::{Session, SessionSource, TournamentResult};
+pub use session::{Session, SessionSource, TournamentResult, net_cents};
