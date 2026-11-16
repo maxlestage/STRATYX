@@ -165,7 +165,16 @@ jobs:
           git merge --no-ff --no-edit "$SHA" -m "Fusion de '$BRANCH' dans master (automatique)"
           git push origin HEAD:master
       # Un push fait par un workflow ne lance aucun autre workflow : on lance le déploiement.
+      # L'API de GitHub refuse parfois la demande (HTTP 500 passager) : jusqu'à 4 essais.
       - name: Déployer sur Heroku
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run heroku.yml --ref master --repo "$GITHUB_REPOSITORY"
+        run: |
+          set -uo pipefail
+          for attente in 10 30 60 0; do
+            gh workflow run heroku.yml --ref master --repo "$GITHUB_REPOSITORY" && exit 0
+            [ "$attente" -gt 0 ] || break
+            echo "Déploiement refusé par l'API de GitHub, nouvel essai dans ${attente} s."
+            sleep "$attente"
+          done
+          exit 1
