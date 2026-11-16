@@ -2096,3 +2096,38 @@ largeur et en hauteur) ; contre-épreuve : sur l'ancien code, il échoue (bord 6
 Toutes les commandes de la CI, workspace et site, plus `cargo doc`.
 
 **Pistes suivantes.** Choix laissés à l'utilisateur : itérations 48, 50 et 61.
+
+## 2026-11-16 — Itération 64 : délai de réponse RGPD, un mois civil et non 30 jours
+
+**CI.** Celle de l'itération 63 (`6e99ca0`) est verte et fusionnée dans master
+(`5da95f0`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Relu** (fin de la relecture de `security`) : consentement de capture et verrou D6 (le
+plus récent consentement fait foi, un retrait bloque toute capture), purge de conservation
+(date limite stricte, sans débordement), chiffrement par blocs (drapeau final : troncature
+et octets ajoutés refusés). Rien à redire, sauf un point.
+
+**Trouvé** (`security/src/gdpr/requests.rs`). Le délai légal de réponse à une demande
+d'accès ou d'effacement est d'**un mois** (art. 12.3) ; la constante publique
+`RESPONSE_DEADLINE_MS` le comptait en 30 jours. Pour une demande reçue le 1er février,
+l'échéance est le 1er mars (28 jours) : 30 jours la dépassent. Sur 2024-2031, **240 jours
+de réception sur 2 922 (8,2 %)** — fin janvier et tout février — auraient reçu une échéance
+au-delà du délai légal. La constante n'est encore utilisée par aucun serveur (`apps/server`
+est un squelette) : corrigé avant qu'elle serve.
+
+**Fait.**
+- `response_deadline_ms(reçue_le)` : même quantième et même heure le mois suivant, ramené
+  au dernier jour d'un mois plus court (31 janvier → 28 ou 29 février).
+- `RESPONSE_DEADLINE_MS` vaut 28 jours (le plus court des mois) : un délai fixe qui ne
+  dépasse jamais l'échéance, documenté comme tel.
+- Les calculs de dates civiles (algorithmes de H. Hinnant) passent de
+  `database/src/text/datetime.rs` à un module public `stratyx_shared::calendar` (plus
+  `days_in_month`), utilisé par la base et par la sécurité, sans copie.
+
+**Vérifié.** Nouveaux tests : `deadline_is_one_calendar_month` (six échéances nommées,
+dont années bissextiles et passage d'année ; chaque jour de 2024 à 2031 entre 28 et 31
+jours, jamais avant le délai fixe) ; `calendar::days_roundtrip` (43 000 jours de -800 000
+à 800 000) et `month_lengths` (1900, 2000, 2024 bissextiles ou non). Toutes les commandes de
+la CI, workspace et site (natif et WebAssembly), plus `cargo doc`.
+
+**Pistes suivantes.** Choix laissés à l'utilisateur : itérations 48, 50 et 61.

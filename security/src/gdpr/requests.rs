@@ -5,12 +5,30 @@
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
+use stratyx_shared::calendar::{civil_from_days, days_from_civil, days_in_month};
+
 use super::GdprError;
 use super::audit::{AuditAction, AuditLog, AuditOutcome};
+use super::retention::DAY_MS;
 use super::store::{DataSubject, ErasureReport, ExportedRecord, PersonalDataStore, hex};
 
-/// Délai légal de réponse à une demande : un mois (art. 12.3), compté ici en 30 jours.
-pub const RESPONSE_DEADLINE_MS: u64 = 30 * super::retention::DAY_MS;
+/// Délai de réponse sûr quel que soit le mois de réception : 28 jours, le plus court des
+/// mois. Le délai légal est d'**un mois** (art. 12.3) : 30 jours le dépasseraient pour une
+/// demande reçue le 1er février (échéance le 1er mars). La date exacte est donnée par
+/// [`response_deadline_ms`].
+pub const RESPONSE_DEADLINE_MS: u64 = 28 * DAY_MS;
+
+/// Échéance légale de réponse (art. 12.3) d'une demande reçue à `received_at_ms` (UTC) :
+/// même quantième et même heure le mois suivant, ou le dernier jour de ce mois s'il est plus
+/// court (reçue le 31 janvier : échéance le 28 ou le 29 février).
+#[must_use]
+pub fn response_deadline_ms(received_at_ms: u64) -> u64 {
+    let (days, time) = (received_at_ms / DAY_MS, received_at_ms % DAY_MS);
+    let (y, m, d) = civil_from_days(days.cast_signed());
+    let (y, m) = if m == 12 { (y + 1, 1) } else { (y, m + 1) };
+    let d = d.min(days_in_month(y, m));
+    days_from_civil(y, m, d).cast_unsigned() * DAY_MS + time
+}
 
 /// Données exportées pour une personne.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -375,6 +393,38 @@ mod tests {
                 (AuditAction::Export, AuditOutcome::Failed)
             ]
         );
-        assert_eq!(RESPONSE_DEADLINE_MS, 2_592_000_000);
+        assert_eq!(RESPONSE_DEADLINE_MS, 28 * DAY_MS);
+    }
+
+    /// Échéance au même quantième le mois suivant, ramenée au dernier jour d'un mois plus
+    /// court ; l'heure de réception est gardée.
+    #[test]
+    fn deadline_is_one_calendar_month() {
+        use stratyx_shared::calendar::days_from_civil;
+        let at =
+            |y, m, d, h: u64| days_from_civil(y, m, d).cast_unsigned() * DAY_MS + h * 3_600_000;
+        for (received, due) in [
+            (at(2026, 2, 1, 9), at(2026, 3, 1, 9)),
+            (at(2026, 1, 31, 23), at(2026, 2, 28, 23)),
+            (at(2024, 1, 31, 0), at(2024, 2, 29, 0)),
+            (at(2026, 3, 31, 12), at(2026, 4, 30, 12)),
+            (at(2026, 12, 15, 8), at(2027, 1, 15, 8)),
+            (at(2026, 11, 16, 0), at(2026, 12, 16, 0)),
+        ] {
+            assert_eq!(response_deadline_ms(received), due);
+        }
+        // Chaque jour de 2024 à 2031 : entre 28 et 31 jours, jamais avant le délai sûr.
+        let mut late_with_30_days = 0;
+        for day in days_from_civil(2024, 1, 1)..days_from_civil(2032, 1, 1) {
+            let received = day.cast_unsigned() * DAY_MS;
+            let span = response_deadline_ms(received) - received;
+            assert!((28 * DAY_MS..=31 * DAY_MS).contains(&span), "{day}");
+            assert!(span >= RESPONSE_DEADLINE_MS);
+            if span < 30 * DAY_MS {
+                late_with_30_days += 1;
+            }
+        }
+        // Reçues du 30 janvier au 31 janvier et en février : 30 jours dépasseraient l'échéance.
+        assert!(late_with_30_days > 0);
     }
 }

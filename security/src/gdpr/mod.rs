@@ -17,7 +17,9 @@ mod store;
 
 pub use audit::{AuditAction, AuditEntry, AuditLog, AuditOutcome};
 pub use inventory::{CategoryInfo, DataCategory, INVENTORY, LegalBasis, Subjects, inventory};
-pub use requests::{RESPONSE_DEADLINE_MS, SubjectExport, handle_erasure, handle_export};
+pub use requests::{
+    RESPONSE_DEADLINE_MS, SubjectExport, handle_erasure, handle_export, response_deadline_ms,
+};
 pub use retention::{DAY_MS, PurgePlan, Retention, RetentionPolicy};
 pub use store::{
     DataSubject, ErasureReport, ExportedRecord, InMemoryStore, PersonalDataStore, RecordRef,
