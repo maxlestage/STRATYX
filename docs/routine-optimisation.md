@@ -2179,3 +2179,26 @@ existants (ROI, ITM, multiplicateurs) passent inchangés. Toutes les commandes d
 workspace et site, plus `cargo doc`.
 
 **Pistes suivantes.** Choix laissés à l'utilisateur : itérations 48, 50 et 61.
+
+## 2026-11-16 — Itération 67 : CI, le déploiement résiste à une erreur passagère de GitHub
+
+**CI.** Celle du dernier push (`0c5c556`, la fusion automatique de l'itération 66
+renvoyée sur la branche) est **rouge**. Tous les tests, lints, audits et le site sont
+verts ; seule l'étape « Déployer sur Heroku » du job « Fusion dans master » échoue :
+`gh workflow run heroku.yml` a reçu « HTTP 500: Failed to run workflow dispatch » de
+l'API de GitHub (03:36 UTC). Erreur côté GitHub, sans lien avec le code ; rien n'était à
+fusionner (« déjà dans master ») et l'itération 66 avait été déployée par sa propre CI
+(workflow `heroku.yml` sur `0c5c556`, 02:41 UTC, succès).
+
+**Fait** (`.github/workflows/ci.yml`). L'étape de déploiement réessaie : jusqu'à 4
+demandes, après 10, 30 puis 60 s d'attente (100 s au plus). Une erreur durable fait
+toujours échouer la CI.
+
+**Vérifié.** YAML relu par un analyseur ; script de l'étape exécuté avec un faux `gh` :
+succès au premier essai → 1 demande, code 0 ; deux échecs puis succès → 3 demandes,
+code 0 ; échecs répétés → 4 demandes, code 1. Toutes les commandes de la CI, workspace et
+site, plus `cargo doc` (code Rust inchangé). Ce push relance la CI : son résultat se lira
+à la prochaine itération.
+
+**Pistes suivantes.** Choix laissés à l'utilisateur : itérations 48, 50 et 61, et la
+fréquence de la routine (prévenu le 16/11 à 03:31 UTC).
