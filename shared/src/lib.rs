@@ -4,7 +4,9 @@
 //! - [`Confidence`], [`Source`], [`Observed`] : toute donnée issue de la vision artificielle
 //!   porte sa provenance et son niveau de confiance, afin de signaler les détections
 //!   incertaines et de ne jamais présenter une valeur inférée comme observée.
+//! - [`calendar`] : dates civiles en jours depuis 1970 (dates des historiques, délais RGPD).
 
+pub mod calendar;
 mod chips;
 mod observed;
 

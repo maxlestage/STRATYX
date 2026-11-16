@@ -10,6 +10,7 @@ repository.workspace = true
 
 [dependencies]
 stratyx-poker.workspace = true
+stratyx-shared.workspace = true
 aead-stream = { version = "0.6", default-features = false, features = ["alloc"] }
 argon2 = { version = "0.6", default-features = false, features = ["alloc", "password-hash", "zeroize"] }
 base64ct = { version = "1.8", features = ["alloc"] }
