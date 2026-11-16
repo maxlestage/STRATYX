@@ -45,11 +45,20 @@ pub struct TournamentResult {
     pub payouts: Vec<u64>,
 }
 
+/// Gains moins coûts, en centimes, borné à `i64` : une session lue d'une base ou d'un
+/// export abîmé peut porter des montants au-delà de `i64::MAX`, qu'une conversion `as`
+/// changerait de signe (un gain démesuré deviendrait une perte).
+#[must_use]
+pub fn net_cents(prizes: u64, costs: u64) -> i64 {
+    let net = i128::from(prizes) - i128::from(costs);
+    i64::try_from(net).unwrap_or(if net > 0 { i64::MAX } else { i64::MIN })
+}
+
 impl TournamentResult {
-    /// Bénéfice net en centimes.
+    /// Bénéfice net en centimes (borné, voir [`net_cents`]).
     #[must_use]
     pub fn profit(&self) -> i64 {
-        self.prize as i64 - self.buy_in as i64
+        net_cents(self.prize, self.buy_in)
     }
 
     /// Vrai si le joueur a fini dans les places payées.

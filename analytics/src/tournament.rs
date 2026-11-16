@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use stratyx_poker::format::GameType;
-use stratyx_poker::session::{Session, TournamentResult};
+use stratyx_poker::session::{Session, TournamentResult, net_cents};
 
 use crate::stat::Stat;
 
@@ -29,7 +29,7 @@ pub struct MultiplierTotals {
 impl MultiplierTotals {
     #[must_use]
     pub fn profit(&self) -> i64 {
-        self.prizes as i64 - self.buy_ins as i64
+        net_cents(self.prizes, self.buy_ins)
     }
 }
 
@@ -72,26 +72,27 @@ impl TournamentTotals {
     }
 
     fn add(&mut self, r: &TournamentResult) {
-        self.entries += 1;
-        self.buy_ins += r.buy_in;
-        self.fees += r.fee;
-        self.prizes += r.prize;
+        // Sommes saturées : des montants abîmés (base, export) ne font ni paniquer ni boucler.
+        self.entries = self.entries.saturating_add(1);
+        self.buy_ins = self.buy_ins.saturating_add(r.buy_in);
+        self.fees = self.fees.saturating_add(r.fee);
+        self.prizes = self.prizes.saturating_add(r.prize);
         self.itm.record(true, r.in_the_money());
         if let Some(finish) = r.finish {
             self.wins.record(true, finish == 1);
         }
         if let Some(m) = r.prize_multiplier {
             let t = self.multipliers.entry(m).or_default();
-            t.entries += 1;
-            t.buy_ins += r.buy_in;
-            t.prizes += r.prize;
+            t.entries = t.entries.saturating_add(1);
+            t.buy_ins = t.buy_ins.saturating_add(r.buy_in);
+            t.prizes = t.prizes.saturating_add(r.prize);
         }
     }
 
     /// Bénéfice net (centimes).
     #[must_use]
     pub fn profit(&self) -> i64 {
-        self.prizes as i64 - self.buy_ins as i64
+        net_cents(self.prizes, self.buy_ins)
     }
 
     /// Retour sur investissement ; `None` sans droit d'entrée payé.
@@ -112,8 +113,11 @@ impl TournamentTotals {
         let (n, sum) = self
             .multipliers
             .iter()
-            .fold((0u64, 0u64), |(n, s), (m, t)| {
-                (n + t.entries, s + u64::from(*m) * t.entries)
+            .fold((0u64, 0u128), |(n, s), (m, t)| {
+                (
+                    n.saturating_add(t.entries),
+                    s + u128::from(*m) * u128::from(t.entries),
+                )
             });
         (n > 0).then(|| sum as f64 / n as f64)
     }
@@ -121,7 +125,10 @@ impl TournamentTotals {
     /// Fréquence d'un multiplicateur parmi les tournois où il est connu.
     #[must_use]
     pub fn multiplier_frequency(&self, multiplier: u32) -> Stat {
-        let n = self.multipliers.values().map(|t| t.entries).sum();
+        let n = self
+            .multipliers
+            .values()
+            .fold(0u64, |n, t| n.saturating_add(t.entries));
         Stat::new(
             self.multipliers.get(&multiplier).map_or(0, |t| t.entries),
             n,
@@ -291,5 +298,35 @@ mod tests {
             serde_json::from_str::<TournamentLedger>(&json).unwrap(),
             ledger
         );
+    }
+
+    /// Montants abîmés (session lue d'une base ou d'un export corrompu) : ni panique ni
+    /// débordement silencieux, et un gain démesuré reste un gain.
+    #[test]
+    fn corrupted_amounts_saturate() {
+        let mut ledger = TournamentLedger::new();
+        let huge = TournamentResult {
+            prize: 10_000_000_000_000_000_000,
+            ..expresso(0, u32::MAX, 1)
+        };
+        assert_eq!(huge.profit(), i64::MAX);
+        let costly = TournamentResult {
+            buy_in: u64::MAX,
+            fee: u64::MAX,
+            ..expresso(0, u32::MAX, 3)
+        };
+        assert_eq!(costly.profit(), i64::MIN);
+        for r in [&huge, &huge, &costly, &costly] {
+            ledger.add(r);
+        }
+        let eur = ledger.totals("EUR").unwrap();
+        assert_eq!(eur.entries, 4);
+        assert_eq!(
+            (eur.buy_ins, eur.fees, eur.prizes),
+            (u64::MAX, u64::MAX, u64::MAX)
+        );
+        assert_eq!(eur.profit(), 0);
+        assert_eq!(eur.average_multiplier(), Some(f64::from(u32::MAX)));
+        assert_eq!(eur.multiplier_frequency(u32::MAX), Stat::new(4, 4));
     }
 }
