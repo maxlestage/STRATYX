@@ -2131,3 +2131,26 @@ jours, jamais avant le délai fixe) ; `calendar::days_roundtrip` (43 000 jours d
 la CI, workspace et site (natif et WebAssembly), plus `cargo doc`.
 
 **Pistes suivantes.** Choix laissés à l'utilisateur : itérations 48, 50 et 61.
+
+## 2026-11-16 — Itération 65 : montants démesurés dans un historique (pas de changement)
+
+**CI.** Celle de l'itération 64 (`2ac9280`) est verte et fusionnée dans master
+(`0c95f0a`). La production répond toujours `503` (quota Eco, itération 50).
+
+**Piste.** `Chips` (`shared/src/chips.rs`) additionne et soustrait sans contrôle : une
+addition qui déborde panique en débogage et, en release (donc dans le WebAssembly de
+`/app`), repart silencieusement de zéro (modulo 2⁶⁴). Les montants viennent d'historiques collés par
+l'utilisateur.
+
+**Constaté.** Déjà couvert en amont : `GameSetup` (`poker/src/game.rs`) refuse une main
+dont la **somme** des tapis (`checked_add`), la grosse blinde ou l'ante dépasse 2⁶²
+(`MAX_TOTAL_CHIPS`), et tous les montants en jeu sont bornés par cette somme. Essai : un
+historique PokerStars dont deux tapis valent 18 446 744 073 709 551 000 jetons (tapis à
+tapis) donne avec `stratyx analyse` « montants démesurés (au-delà de 2^62 jetons) », sans
+panique. Rien à changer. Vision (images quelconques, modèles incohérents) : déjà soumise à
+des tests de fuzzing (itérations 13 et 14).
+
+**Vérifié.** Toutes les commandes de la CI, workspace et site, plus `cargo doc` (journal
+seul modifié).
+
+**Pistes suivantes.** Choix laissés à l'utilisateur : itérations 48, 50 et 61.
