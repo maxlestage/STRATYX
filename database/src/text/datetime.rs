@@ -4,30 +4,7 @@
 //! (`ET`, avec l'heure d'été en vigueur depuis 2007). Un fuseau inconnu laisse la date absente
 //! plutôt que de la deviner.
 
-/// Jours écoulés depuis le 1970-01-01 (calendrier grégorien proleptique).
-fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = y - era * 400;
-    let mp = i64::from((m + 9) % 12);
-    let doy = (153 * mp + 2) / 5 + i64::from(d) - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
-
-/// Date civile d'un nombre de jours depuis le 1970-01-01.
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
-    let z = z + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    (if m <= 2 { y + 1 } else { y }, m, d)
-}
+use stratyx_shared::calendar::{civil_from_days, days_from_civil};
 
 /// Jour du mois du `n`-ième dimanche (1 = premier) du mois.
 fn nth_sunday(y: i64, m: u32, n: u32) -> u32 {
@@ -185,16 +162,6 @@ pub(crate) fn format_header_date(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn civil_roundtrip() {
-        for days in [-1_000_000, -1, 0, 1, 19_000, 20_000, 2_000_000] {
-            let (y, m, d) = civil_from_days(days);
-            assert_eq!(days_from_civil(y, m, d), days);
-        }
-        assert_eq!(days_from_civil(1970, 1, 1), 0);
-        assert_eq!(days_from_civil(2000, 3, 1), 11_017);
-    }
 
     #[test]
     fn us_dst_boundaries() {
