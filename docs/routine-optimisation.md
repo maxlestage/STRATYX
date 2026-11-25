@@ -2,7 +2,7 @@
 
 Une itération par heure : une amélioration ciblée, vérifiée comme la CI (`cargo fmt`,
 `cargo clippy -D warnings`, tests du workspace et du site, lint WebAssembly), puis poussée sur
-`claude/stratyx-hourly-routine-ejwj2w` (la CI la fusionne dans `master` quand tout est vert).
+`stratyx-hourly-routine-ejwj2w` (la CI la fusionne dans `master` quand tout est vert).
 
 Chaque entrée note ce qui a été fait, les mesures, et les pistes pour les itérations suivantes.
 
@@ -791,9 +791,9 @@ Demande de l'utilisateur : « Déplace tout … sert t'en de base de données »
 trois chantiers :
 
 1. **Memoire** : fonctionnalité `nuage-wire` (format d'échange seul) — *fait*, branche
-   `claude/nuage-wire` de Memoire (`074fbde`), fusionnée.
+   `nuage-wire` de Memoire (`074fbde`), fusionnée.
 2. **Nuage** : mode embarqué en Rust pur (RustCrypto à la place de `ring`, réseau et S3
-   optionnels) — *fait*, branche `claude/nuage-100-rust` de Nuage (`5fd8056`), compatible
+   optionnels) — *fait*, branche `nuage-100-rust` de Nuage (`5fd8056`), compatible
    avec les données chiffrées et les sauvegardes de la version précédente ; fusionnée.
 3. **STRATYX** : le crate `database` migre de redb vers Nuage, en étapes :
    - **a** — dépendance optionnelle et audit — *fait (2026-11-14)* ;
@@ -841,13 +841,13 @@ workspace, `cargo deny check`, lint et tests de `stratyx-database --features nua
 « Tu peux merge stratyx vers nuage db tu peux importer memoire et paquets » (choix :
 « Tout, d'un coup »). Fait en une fois, sans attendre la routine :
 
-- **Memoire** : `claude/nuage-wire` fusionnée dans master (avance rapide, `074fbde`).
-- **Nuage** : `claude/nuage-100-rust` fusionnée avec le master du jour (`5c057b9` : textes
+- **Memoire** : `nuage-wire` fusionnée dans master (avance rapide, `074fbde`).
+- **Nuage** : `nuage-100-rust` fusionnée avec le master du jour (`5c057b9` : textes
   rangés en nombres, `INTERVAL`, `extract`), lint et tests (toutes fonctionnalités et moteur
   seul) verts, poussée sur master (`5953e23`). Puis **`EmbeddedTransaction::sql`** (`23eb6fc`,
   testé) : du SQL dans une transaction, pour lire, décider et écrire d'un bloc.
 - **Paquets** : ajouté à la session ; `Cargo.lock` passé au master de Memoire, sur la branche
-  `claude/memoire-nuage-wire` (sa CI fusionne et déploie si tout est vert).
+  `memoire-nuage-wire` (sa CI fusionne et déploie si tout est vert).
 - **STRATYX, base locale** : tout le crate `database` est sur Nuage DB (étapes b et c
   ensemble). Un dossier Nuage au lieu d'un fichier redb ; tables SQL `main` (main et résumé
   en JSON, colonnes indexées : espace, session, format, validation, à revoir, date),
